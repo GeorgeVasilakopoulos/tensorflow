@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/function_transformation.h"
 #include "tensorflow/core/grappler/optimizers/generic_layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
@@ -258,6 +259,10 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
                                       cfg_.scoped_allocator_opts()));
   MK_OPT("pin_to_host", "pin_to_host_optimization",
          new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
+
+  if (LowerControlFlow()) {
+    MK_OPT("function_transformation", "function_transformation", new FunctionTransformation());
+  }
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -482,7 +487,14 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         std::make_unique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
-
+  if (BOTH_NOT_OFF(function_transformation)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(function_transformation) ||
+        USER_IS_EXPERIMENTAL_BOTH(function_transformation)) {
+      VLOG(2) << "function_transformation is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(MakeUnique<FunctionTransformation>());
+    }
+  }
 #ifndef ENABLE_MKL
   if (BOTH_ARE_ON(scoped_allocator_optimization)) {
     optimizers->push_back(std::make_unique<ScopedAllocatorOptimizer>(
@@ -636,6 +648,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
     PRINT_CFG(loop_optimization)
     PRINT_CFG(dependency_optimization)
     PRINT_CFG(scoped_allocator_optimization)
+    PRINT_CFG(function_transformation)
 #undef PRINT_CFG
     user_cfg.toggle_config["auto_mixed_precision"] =
         AutoMixedPrecisionEnabled(cfg_.auto_mixed_precision())
@@ -691,6 +704,7 @@ void MetaOptimizer::PrintUserAndPluginConfigs(
       PRINT_CFG("memory", "memory_optimization")
       PRINT_CFG("autoparallel", "auto_parallel")
       PRINT_CFG("scoped_allocator", "scoped_allocator_optimization")
+      PRINT_CFG("function_transformation", "function_transformation")
 #undef PRINT_CFG
     }
   }
@@ -1348,6 +1362,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.auto_parallel().enable() ||
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
+         rewrite_cfg.function_transformation() != RewriterConfig::OFF ||
 #ifndef ENABLE_MKL
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
 #endif

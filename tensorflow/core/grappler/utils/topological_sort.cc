@@ -56,6 +56,7 @@ Status ComputeTopologicalOrder(
 
   // Keep track of how many inputs are ready for the given node.
   std::vector<int> num_ready_inputs(graph.node_size(), 0);
+  std::unordered_map<int, std::set<int>> returning_nodes;
 
   // We'll push index of ready nodes to this output vector.
   ready_nodes->reserve(graph.node_size());
@@ -68,12 +69,47 @@ Status ComputeTopologicalOrder(
       ready_nodes->push_back(i);
       back++;
     }
+    bool recursion_merge = false;
     if (IsMerge(graph.node(i))) {
       for (int input : graph_view.GetFanin(i)) {
         if (IsNextIteration(graph.node(input))) {
           num_ready_inputs[i]++;
         }
+        else if (IsCall(graph.node(input))) {
+          num_ready_inputs[i]++;
+          recursion_merge = true;
+        }
       }
+      if (recursion_merge) {
+        num_ready_inputs[i]--;
+        recursion_merge = false;
+      }
+    } else if (IsReturn(graph.node(i))) {
+      // Nodes that send their output to "Return" nodes are
+      // function Returning Nodes and in case of recursive functions
+      // those nodes are part of graph cycles.
+      for (int input : graph_view.GetFanin(i)) {
+        // In order to detect the recursion cycles we depend on
+        // the fact that a recursive function's returning node,
+        // will be sending outputs to at least 2 "Return" nodes
+        // with different "call_id" attributes (same "call_id"
+        // attrs would mean that they belong in the same function call
+        // but they correspond to different function outputs)
+        // if (!StringPiece(graph.node(input)).starts_with("^")) {
+        if (true) {
+          int call_id;
+          GetNodeAttr(graph.node(i), "call_id", &call_id);
+          returning_nodes[input].emplace(call_id);
+        }
+      }
+      num_ready_inputs[i] = 0;
+    }
+  }
+
+  for (const auto& retnode : returning_nodes) {
+    if (retnode.second.size() > 1) {
+      // Detected Cycle
+      num_ready_inputs[retnode.first]++;
     }
   }
 
