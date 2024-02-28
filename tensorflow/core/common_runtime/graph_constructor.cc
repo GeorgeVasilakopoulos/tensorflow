@@ -685,7 +685,7 @@ Status GraphConstructor::PopulateFunctionReturningNodes() {
 
 
           int call_id;
-          GetNodeAttr(AttrSlice(node_def), "call_id", &call_id);
+          TF_CHECK_OK(GetNodeAttr(AttrSlice(node_def), "call_id", &call_id));
           returning_nodes[prevNode].emplace(call_id);
         }
       }

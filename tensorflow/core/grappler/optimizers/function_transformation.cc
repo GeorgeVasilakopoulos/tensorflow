@@ -395,11 +395,11 @@ Status CallRewriter::TransformCall(CallInfo& call_info) {
     call_nodes.resize(func_info.inputs.size());
     for (unsigned int arg_num = 0; arg_num < func_info.inputs.size(); arg_num++) {
         call_nodes[arg_num] = graph->add_node();
-        AddCallOp(call_info,
+        TF_CHECK_OK(AddCallOp(call_info,
                 func_info.input_def[arg_num],
                 call_info.input_nodes[arg_num],
                 arg_num,
-                call_nodes[arg_num]);
+                call_nodes[arg_num]));
 
         call_nodes[arg_num]->set_device(call_info.device);
 
@@ -410,11 +410,11 @@ Status CallRewriter::TransformCall(CallInfo& call_info) {
     ret_nodes.resize(func_info.outputs.size());
     for (unsigned int out_port = 0; out_port < func_info.outputs.size(); out_port++) {
         ret_nodes[out_port] = graph->add_node();
-        AddRetOp(call_info,
+        TF_CHECK_OK(AddRetOp(call_info,
                func_info.output_def[out_port],
                func_info.outputs[out_port],
                out_port,
-               ret_nodes[out_port]);
+               ret_nodes[out_port]));
         ret_nodes[out_port]->set_device(call_info.device);
     }
 
