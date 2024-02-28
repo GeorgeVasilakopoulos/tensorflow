@@ -496,7 +496,7 @@ Status MetaOptimizer::InitializeOptimizers(
         USER_IS_EXPERIMENTAL_BOTH(function_transformation)) {
       VLOG(2) << "function_transformation is not implemented in TFG yet";
     } else {
-      optimizers->push_back(MakeUnique<FunctionTransformation>());
+      optimizers->push_back(std::make_unique<FunctionTransformation>());
     }
   }
 #ifndef ENABLE_MKL

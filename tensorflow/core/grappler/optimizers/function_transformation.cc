@@ -164,7 +164,7 @@ Status CopyArgType(const OpDef::ArgDef& arg,
       }
       *type = it->type();
     }
-    return Status::OK();
+    return OkStatus();
 }
 
 // Copy input/output argument type to the type_list. Return error if argument
@@ -181,7 +181,7 @@ Status CopyArgType(const OpDef::ArgDef& arg,
       }
       type_list->add_type(it->type());
     }
-    return Status::OK();
+    return OkStatus();
 }
 
 struct CallInfo {
@@ -314,7 +314,7 @@ Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
             calls.push_back(call);
         }
     }
-    return Status::OK();
+    return OkStatus();
 }
 
 Status CallRewriter::AddCallOp(const CallInfo& call_info,
@@ -341,7 +341,7 @@ Status CallRewriter::AddCallOp(const CallInfo& call_info,
     attr["arg_id"].set_i(arg_id);
     attr["is_constant"].set_b(false);
 
-    return Status::OK();
+    return OkStatus();
 }
 
 Status CallRewriter::AddRetOp(const CallInfo& call_info,
@@ -363,7 +363,7 @@ Status CallRewriter::AddRetOp(const CallInfo& call_info,
     attr["call_id"].set_i(call_info.call_id);
     attr["arg_id"].set_i(arg_id);
 
-    return Status::OK();
+    return OkStatus();
 }
 
 Status CallRewriter::ConnectInput(NodeDef* from, NodeDef* to) {
@@ -377,7 +377,7 @@ Status CallRewriter::ConnectInput(NodeDef* from, NodeDef* to) {
     if (to->input_size() > 1) {
         (*to->mutable_attr())["N"].set_i(to->input_size());
     }
-    return Status::OK();
+    return OkStatus();
 }
 
 Status CallRewriter::TransformCall(CallInfo& call_info) {
@@ -454,7 +454,7 @@ Status CallRewriter::TransformCall(CallInfo& call_info) {
     printf("Mark call %s (function %s) as transformed\n", call_info.node_name.c_str(), call_info.function_name.c_str());
     MarkCallTransformed(call_info);
 
-    return Status::OK();
+    return OkStatus();
 }
 
 Status InlineFunction(const FunctionDef& func_def,
@@ -549,7 +549,7 @@ Status InlineFunction(const FunctionDef& func_def,
         func_info.output_def[i] = func_def.signature().output_arg(i);
     }
 
-    return Status::OK();
+    return OkStatus();
 }
 
 // new
@@ -564,7 +564,7 @@ Status CallRewriter::FindCompatibleOrInlineFunction(
     // possible type specialization?
     if (it != transformed_functions_.end()) {
         func_info = it->second;
-        return Status::OK();
+        return OkStatus();
     }
     const FunctionDef* func_def = ctx.FindInlinedFunction(func_name);
     if (func_def == nullptr) {
@@ -576,7 +576,7 @@ Status CallRewriter::FindCompatibleOrInlineFunction(
         InlineFunction(*func_def, ctx, func_attr, device, graph, func_info));
     transformed_functions_[func_name] = func_info;
     printf("Store inlined function %s\n", func_name.c_str());
-    return Status::OK();
+    return OkStatus();
 }
 
 }  // namespace
@@ -588,7 +588,7 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
 
     *output = item.graph;
     if (!ctx.HasInlinedFunctions()) {
-        return Status::OK();
+        return OkStatus();
     }
 
     std::vector<CallInfo> calls;
@@ -600,7 +600,7 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
         for (CallInfo& call : calls) {
             Status s = call_rewriter.TransformCall(call);
             if (!s.ok()) {
-              printf("Error: %s\n", s.error_message().c_str());
+              printf("Error: %s\n", tsl::NullTerminatedMessage(s));
               return s;
             }
             printf("After transforming call %s:\n %s\n", call.function_name.c_str(), SummarizeGraphDef(*output).c_str());
@@ -643,7 +643,7 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
     writer.WriteEvent(event);
     /******************************************************************************************************/
 
-    return Status::OK();
+    return OkStatus();
 }
 
 }  // end namespace grappler
