@@ -665,7 +665,7 @@ Status GraphConstructor::EnsureNoNameCollisions() {
 Status GraphConstructor::PopulateFunctionReturningNodes() {
   std::unordered_map<string, std::set<int>> returning_nodes;
   for (int n = 0; n < node_def_count(); ++n) {
-    const NodeDef& node_def = get_node_def();
+    const NodeDef& node_def = get_node_def(n);
     if (IsReturn(node_def)){
       // Nodes that send their output to "Return" nodes are
       // function Returning Nodes and in case of recursive functions
@@ -783,7 +783,7 @@ Status GraphConstructor::InitFromEdges() {
     }
   }
 
-  gt1::FlatSet<string> call_nodes;
+  gtl::FlatSet<string> call_nodes;
   for (int n = 0; n < node_def_count(); ++n) {
     const NodeDef& node_def = get_node_def(n);
     if (IsCall(node_def)) {

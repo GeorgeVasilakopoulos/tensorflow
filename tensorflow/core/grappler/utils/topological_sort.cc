@@ -98,7 +98,7 @@ Status ComputeTopologicalOrder(
         // if (!StringPiece(graph.node(input)).starts_with("^")) {
         if (true) {
           int call_id;
-          GetNodeAttr(graph.node(i), "call_id", &call_id);
+          TF_CHECK_OK(GetNodeAttr(graph.node(i), "call_id", &call_id));
           returning_nodes[input].emplace(call_id);
         }
       }

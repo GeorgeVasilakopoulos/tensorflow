@@ -683,6 +683,7 @@ cc_library(
         ":dependency_optimizer",
         ":function_optimizer",
         ":generic_layout_optimizer",
+        ":function_transformation",
         ":graph_optimizer",
         ":implementation_selector",
         ":loop_optimizer",
