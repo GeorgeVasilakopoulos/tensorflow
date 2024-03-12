@@ -1,0 +1,7 @@
+#!/bin/bash
+
+pip uninstall tensorflow -y
+cd ..
+bazel build  //tensorflow/tools/pip_package:build_pip_package
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package /mnt
+pip install /mnt/tensorflow-*.whl

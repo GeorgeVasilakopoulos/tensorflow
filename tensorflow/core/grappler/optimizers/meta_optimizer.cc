@@ -212,6 +212,12 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
       cfg_.use_plugin_optimizers() != RewriterConfig::OFF, device_types);
   if (optimizer == "pruning" && !plugin_configs.disable_model_pruning)
     return std::unique_ptr<GraphOptimizer>(new ModelPruner());
+  
+  
+  // if (LowerControlFlow()) {
+    MK_OPT("function_transformation", "function_transformation", new FunctionTransformation());
+  // }
+  
   MK_OPT("function", "function_optimization",
          new FunctionOptimizer(cfg_.function_optimization(),
                                /*lower_control_flow=*/LowerControlFlow()));
@@ -262,9 +268,6 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("pin_to_host", "pin_to_host_optimization",
          new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
-  if (LowerControlFlow()) {
-    MK_OPT("function_transformation", "function_transformation", new FunctionTransformation());
-  }
 
   return std::unique_ptr<GraphOptimizer>();
 }

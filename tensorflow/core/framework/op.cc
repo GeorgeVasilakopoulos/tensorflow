@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 
+#include <fstream>
+
 #include <algorithm>
 #include <memory>
 #include <utility>
@@ -79,6 +81,10 @@ Status OpNotFound(const string& op_type_name) {
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
   if ((*op_reg_data = LookUp(op_type_name))) return OkStatus();
+  std::ofstream outputFile("/tensorflow/TESTS/mylog.txt", std::ios::app);
+  outputFile << "Searching for " << op_type_name << std::endl;
+
+  outputFile.close();
   return OpNotFound(op_type_name);
 }
 

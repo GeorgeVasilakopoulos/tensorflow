@@ -11,6 +11,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <fstream>
+// std::ofstream outputFile("/tensorflow/TESTS/mylog.txt");
+
 #include "tensorflow/core/grappler/optimizers/function_transformation.h"
 #include <set>
 #include <iostream>
@@ -77,7 +80,11 @@ class FunctionInliningContext {
   private:
     std::unordered_map<string, const FunctionDef*> InliningCandidates(const GrapplerItem& item) const {
       std::unordered_map<string, const FunctionDef*> functions;
+      
+      
+    // outputFile << "In inliningcandidates " << SummarizeGraphDef(item.graph)<< std::endl;
       for (const FunctionDef& func : item.graph.library().function()) {
+        // outputFile << func.signature().name() << std::endl;
         // Don't inline functions marked as noinline
         // if (func.attr().count("_noinline") != 0) {
         //   continue;
@@ -96,6 +103,7 @@ class FunctionInliningContext {
         }
         functions[func.signature().name()] = &func;
       }
+    //   outputFile << "Returning!"<<std::endl;
       return functions;
     }
 
@@ -295,8 +303,10 @@ class CallRewriter {
 Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
 
     // identify and collect calls in the graph
+    // outputFile << "In collect calls: "<< std::endl;
     for (NodeDef& node : *graph->mutable_node()) {
         const FunctionDef* func = ctx.FindInlinedFunction(node.op());
+        // outputFile << "Collecting Calls: "<< node.name() << " " << node.op() << std::endl;
         if (func != nullptr) {
             CallInfo call;
             call.call_id = GetCallId(node);
@@ -583,11 +593,18 @@ Status CallRewriter::FindCompatibleOrInlineFunction(
 
 Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& item,
                                         GraphDef* output) {
+    
+    
+    
+    // outputFile << "In Optimize" << std::endl;
+    
+
     FunctionInliningContext ctx(item);
     CallRewriter call_rewriter(item, output, ctx);
 
     *output = item.graph;
     if (!ctx.HasInlinedFunctions()) {
+        // outputFile << "No inlining functions!"<<std::endl;
         return OkStatus();
     }
 
@@ -609,6 +626,7 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
         call_rewriter.Flush();
     }
     call_rewriter.Flush();
+    // outputFile.close();
     printf("After finalizing:\n %s\n", SummarizeGraphDef(*output).c_str());
     *output->mutable_versions() = item.graph.versions();
 
