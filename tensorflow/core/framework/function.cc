@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <ctype.h>
-
+#include <fstream>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -1708,6 +1708,13 @@ Status FunctionLibraryDefinition::LookUp(
     const string& op, const OpRegistrationData** op_reg_data) const {
   tf_shared_lock l(mu_);
   auto iter = records_.find(op);
+  std::ofstream outputFile("/tensorflow/TESTS/mylog.txt", std::ios::app);
+  outputFile << "Searching for " << op << std::endl;
+  for(auto s : ListFunctionNames()){
+    outputFile << "Function Name: " << s << std::endl; 
+  }
+
+  outputFile.close();
   if (iter != records_.end()) {
     *op_reg_data = &iter->second->op_registration_data();
     return OkStatus();
