@@ -134,10 +134,12 @@ Status NodeBuilder::Finalize(Graph* graph, Node** created_node, bool consume) {
 
   NodeDef node_def;
   TF_RETURN_IF_ERROR(def_builder_.Finalize(&node_def, consume));
-  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
-  TF_RETURN_IF_ERROR(
-      CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
-
+  
+  if(&def_builder_.op_def() != nullptr){
+    TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, def_builder_.op_def()));
+    TF_RETURN_IF_ERROR(
+        CheckOpDeprecation(def_builder_.op_def(), graph->versions().producer()));
+  }
   TF_ASSIGN_OR_RETURN(Node * node, graph->AddNode(std::move(node_def)));
 
   node->set_assigned_device_name(assigned_device_);
