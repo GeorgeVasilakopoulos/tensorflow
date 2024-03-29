@@ -45,8 +45,10 @@ NodeDefBuilder::NodeDefBuilder(StringPiece name, StringPiece op_name,
   if (status.ok()) {
     Initialize();
   } else {
-    errors_.push_back(std::string(status.message()));
+    // errors_.push_back(std::string(status.message()));
+    // inputs_specified_ = 0;
     inputs_specified_ = 0;
+    node_def_.set_op(string(op_name));
   }
   if (debug != nullptr) MergeDebugInfo(*debug, &node_def_);
 }
@@ -260,7 +262,7 @@ Status NodeDefBuilder::Finalize(NodeDef* node_def, bool consume) {
     }
 
     // Add default values for unspecified attrs.
-    AddDefaultsToNodeDef(*op_def_, node_def);
+    if(op_def_ != nullptr) AddDefaultsToNodeDef(*op_def_, node_def);
 
     return OkStatus();
   }
