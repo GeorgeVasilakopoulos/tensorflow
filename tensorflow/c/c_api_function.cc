@@ -252,6 +252,24 @@ const char* TF_FunctionName(TF_Function* func) {
   return func->record->fdef().signature().name().c_str();
 }
 
+
+void TF_GraphAddFunctionDef(TF_Graph* g, const void* proto, size_t proto_len, TF_Status* status){
+
+  tensorflow::mutex_lock l(g->mu);
+  tensorflow::FunctionDef fdef;
+  bool success = fdef.ParseFromArray(proto, proto_len);
+  if (!success) {
+    status->status = InvalidArgument(
+        "Invalid FunctionDef given to TF_GraphAddFunctionDef");
+    return;
+  }
+
+
+  tensorflow::StackTracesMap stack_traces;
+  status->status = g->graph.AddFunctionDef(fdef,std::move(stack_traces));
+}
+
+
 void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
                           const TF_Function* grad, TF_Status* status) {
   if (func == nullptr) {

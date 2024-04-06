@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/c/tf_tstring.h"
 
+#include "tensorflow/core/framework/function.pb.h"
 // --------------------------------------------------------------------------
 // C API for TensorFlow.
 //
@@ -859,6 +860,11 @@ TF_CAPI_EXPORT extern void TF_GraphImportGraphDefWithReturnOutputs(
 TF_CAPI_EXPORT extern void TF_GraphImportGraphDef(
     TF_Graph* graph, const TF_Buffer* graph_def,
     const TF_ImportGraphDefOptions* options, TF_Status* status);
+
+
+
+TF_CAPI_EXPORT extern void TF_GraphAddFunctionDef(TF_Graph* g, const void* proto, size_t proto_len, TF_Status* status);
+
 
 // Adds a copy of function `func` and optionally its gradient function `grad`
 // to `g`. Once `func`/`grad` is added to `g`, it can be called by creating
