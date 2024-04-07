@@ -2512,8 +2512,10 @@ class Graph(pywrap_tf_session.PyGraph):
     function_def.signature.CopyFrom(op_def)
 
     with self._c_graph.get() as c_graph:
+      try:
         pywrap_tf_session.TF_GraphAddFunctionDef(c_graph,function_def.SerializeToString())
-
+      except errors.InvalidArgumentError:
+        pass
 
 
   def _add_function(self, function) -> None:
