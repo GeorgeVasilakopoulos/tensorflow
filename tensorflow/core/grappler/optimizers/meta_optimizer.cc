@@ -108,7 +108,7 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer" ||
-         absl::StartsWith(name, "auto_mixed_precision");
+         absl::StartsWith(name, "auto_mixed_precision") || name == "function_optimizer";
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -214,9 +214,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
     return std::unique_ptr<GraphOptimizer>(new ModelPruner());
   
   
-  // if (LowerControlFlow()) {
+  if (LowerControlFlow()) {
     MK_OPT("function_transformation", "function_transformation", new FunctionTransformation());
-  // }
+  }
   
   MK_OPT("function", "function_optimization",
          new FunctionOptimizer(cfg_.function_optimization(),
@@ -335,6 +335,14 @@ Status MetaOptimizer::InitializeOptimizers(
       VLOG(2) << "implementation_selector is not implemented in TFG yet";
     else
       optimizers->push_back(std::make_unique<ImplementationSelector>());
+  }
+  if (BOTH_NOT_OFF(function_transformation)) {
+    if (USER_IS_EXPERIMENTAL_MLIR(function_transformation) ||
+        USER_IS_EXPERIMENTAL_BOTH(function_transformation)) {
+      VLOG(2) << "function_transformation is not implemented in TFG yet";
+    } else {
+      optimizers->push_back(std::make_unique<FunctionTransformation>());
+    }
   }
   if (BOTH_NOT_OFF(function_optimization)) {
     if (USER_IS_EXPERIMENTAL_MLIR(function_optimization) ||
@@ -490,14 +498,7 @@ Status MetaOptimizer::InitializeOptimizers(
     optimizers->push_back(
         std::make_unique<AutoParallel>(cfg_.auto_parallel().num_replicas()));
   }
-  if (BOTH_NOT_OFF(function_transformation)) {
-    if (USER_IS_EXPERIMENTAL_MLIR(function_transformation) ||
-        USER_IS_EXPERIMENTAL_BOTH(function_transformation)) {
-      VLOG(2) << "function_transformation is not implemented in TFG yet";
-    } else {
-      optimizers->push_back(std::make_unique<FunctionTransformation>());
-    }
-  }
+
 #ifndef ENABLE_MKL
   if (BOTH_ARE_ON(scoped_allocator_optimization)) {
     optimizers->push_back(std::make_unique<ScopedAllocatorOptimizer>(
@@ -771,12 +772,12 @@ Status MetaOptimizer::OptimizeGraph(
     Cluster* cluster, GrapplerItem&& item, GraphDef* optimized_graph) {
   int min_graph_nodes = cfg_.min_graph_nodes() == 0 ? kDefaultMinGraphNodes
                                                     : cfg_.min_graph_nodes();
-  if (item.graph.node_size() < min_graph_nodes) {
-    VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
-            << " nodes.";
-    *optimized_graph = item.graph;
-    return OkStatus();
-  }
+  // if (item.graph.node_size() < min_graph_nodes) {
+  //   VLOG(3) << "Skipping optimization, graph has less than " << min_graph_nodes
+  //           << " nodes.";
+  //   *optimized_graph = item.graph;
+  //   return OkStatus();
+  // }
 
   tensorflow::metrics::ScopedCounter<2> timings(
       tensorflow::metrics::GetGraphOptimizationCounter(),
@@ -827,12 +828,12 @@ Status MetaOptimizer::OptimizeGraph(
 
   for (int iteration = 0; iteration < NumIterations(cfg_); ++iteration) {
     // Don't bother optimizing further if the graph is already tiny.
-    if (optimized_graph->node_size() < min_graph_nodes) {
-      VLOG(3) << "Stopping after iteration " << iteration
-              << ", graph is tiny (#nodes = " << optimized_graph->node_size()
-              << "  < " << min_graph_nodes << ")";
-      break;
-    }
+    // if (optimized_graph->node_size() < min_graph_nodes) {
+    //   VLOG(3) << "Stopping after iteration " << iteration
+    //           << ", graph is tiny (#nodes = " << optimized_graph->node_size()
+    //           << "  < " << min_graph_nodes << ")";
+    //   break;
+    // }
 
     VLOG(4) << "Starting optimization iteration " << iteration;
     if (VLOG_IS_ON(4)) {
