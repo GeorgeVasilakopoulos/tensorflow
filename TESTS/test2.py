@@ -2,8 +2,8 @@ import os
 
 # os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
-os.environ['TF_CPP_MAX_VLOG_LEVEL'] = '2'
-os.environ['TF_DUMP_GRAPH_NAME_FILTER'] = 'Fac'
+# os.environ['TF_CPP_MAX_VLOG_LEVEL'] = '2'
+# os.environ['TF_DUMP_GRAPH_NAME_FILTER'] = 'Fac'
 import tensorflow as tf
 from tensorflow.python.framework import function
 
