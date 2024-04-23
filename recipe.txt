@@ -1,0 +1,155 @@
+========================================= IN A NEW NODE ================================
+
+1. Clone your repo
+
+2. Install Docker
+
+4. Install VS code extensions etc
+
+5. Create Docker image using this Dockerfile
+
+###########	 Dockerfile for my own project	 ################
+
+FROM tensorflow/tensorflow:latest
+
+RUN rm -rf /tensorflow
+COPY ./tensorflow /tensorflow
+
+RUN apt-get update && apt-get install clang -y \
+    && apt-get install -y gdb \
+    && apt-get install -y patchelf
+    && apt-get install -y git
+
+RUN echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list > /dev/null
+
+RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
+RUN apt update
+RUN apt install -y bazel-6.5.0
+RUN apt install -y bazel
+WORKDIR /tensorflow
+
+RUN bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
+# RUN ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /mnt
+
+#############################################################
+
+6. Create a container like this
+
+
+######
+docker run -d --restart always -it --cap-add=SYS_PTRACE --security-opt seccomp=unconfined -w /tensorflow -v $PWD:/mnt \
+    -e HOST_PERMS="\\((id -u):\\)(id -g)" my_image bash
+######
+
+=======================================================================================
+
+CREATING KELLY'S IMAGE
+
+1. Clone her repo
+
+2. Build docker image using the following Dockerfile:
+
+
+# docker build -t kelly_image .
+
+############# Dockerfile for Kelly's project ################
+
+FROM tensorflow/tensorflow:1.4.0
+
+RUN rm -rf /tensorflow
+COPY ./tensorflow /tensorflow
+
+
+
+RUN apt-get update \
+	&& apt-get install -y curl wget \
+	&& apt-get install -y software-properties-common \
+	&& apt-get install -y unzip \ 
+	&& apt-get install -y git \
+	&& apt-get install -y gcc g++ \
+	&& apt-get install -y gdb
+##########################################################
+
+
+4. RUN 
+
+# apt-get upgrade
+
+
+5. Install Conda and create virtual environment:
+
+# cd
+# wget https://repo.anaconda.com/archive/Anaconda3-2022.05-Linux-x86_64.sh
+# chmod +x Anaconda3-2022.05-Linux-x86_64.sh
+# ./Anaconda3-2022.05-Linux-x86_64.sh
+
+...
+
+# conda create -n venv pip python=3.7
+# conda activate venv
+
+6. Install some stuff:
+
+pip install -U --user pip six numpy wheel setuptools mock future>=0.17.1
+pip install -U --user keras_applications==1.0.6 --no-deps
+pip install -U --user keras_preprocessing==1.0.5 --no-deps
+
+
+7. Install bazel:
+
+# cd
+# wget https://raw.githubusercontent.com/acharal/tensorflow/recursive-functions/tensorflow/tools/ci_build/install/install_bazel.sh
+
+# chmod +x install_bazel.sh
+# ./install_bazel.sh
+
+
+8. In tensorflow/workspace.bzl change the installation of cython to
+
+
+
+##############
+native.new_http_archive(
+      name = "cython",
+      sha256 = "94916d1ede67682638d3cc0feb10648ff14dc51fb7a7f147f4fedce78eaaea97",
+      urls = [
+          "https://files.pythonhosted.org/packages/f0/66/6309291b19b498b672817bd237caec787d1b18013ee659f17b1ec5844887/Cython-0.29.tar.gz",
+      ],
+      strip_prefix = "Cython-0.29",
+      build_file = str(Label("//third_party:cython.BUILD")),
+  )
+##############
+
+
+9. Build Tensorflow as follows:
+
+
+# ./configure
+# bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package --cxxopt="-g" --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" --cxxopt="-fpermissive"
+# bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pkg/
+# pip3 uninstall -y tensorflow
+# pip3 install /tmp/tensorflow_pkg/tensorflow-1.4.2-cp37-cp37m-linux_x86_64.whl
+
+
+
+
+
+
+Comments:
+
+// RUN apt-get install -y software-properties-common 
+// RUN apt-get install unzip
+// RUN apt-get update
+// RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
+// // RUN ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /mnt
+// RUN apt-get install -y gcc-11 g++-11
+
+// RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 60 --slave /usr/bin/g++ g++ /usr/bin/g++-11
+// RUN wget https://repo.anaconda.com/archive/Anaconda3-2022.05-Linux-x86_64.sh
+// RUN chmod +x Anaconda3-2022.05-Linux-x86_64.sh
+
+// // RUN conda create -n venv pip python=3.7
+// RUN wget https://raw.githubusercontent.com/acharal/tensorflow/recursive-functions/tensorflow/tools/ci_build/install/install_bazel.sh
+
+
+
