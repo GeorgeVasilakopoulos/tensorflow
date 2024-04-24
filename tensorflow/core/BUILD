@@ -1766,7 +1766,7 @@ alias(
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
-    hdrs = ["//tensorflow/core/graph:graph_headers"],
+    hdrs = ["//tensorflow/core/graph:graph_headers","//tensorflow/core/common_runtime:graph_constructor.h"],
     deps = [
         ":framework",
         ":framework_internal",

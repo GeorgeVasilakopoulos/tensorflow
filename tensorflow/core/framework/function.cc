@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <ctype.h>
-
+#include <fstream>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -1429,7 +1429,17 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(
 Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
                                             bool* added) {
   *added = false;
-  auto iter = records_.find(registration->fdef().signature().name());
+  auto iter = records_.find(registration->fdef().signature().name()); 
+  std::ofstream fout("/tensorflow/TESTS/mylogger.txt");
+  fout << "Searching for " << registration->fdef().signature().name() << std::endl;
+  fout << "Size of registry " << records_.size() << std::endl;
+  for(auto reg : records_){
+    fout << "Found op "<< reg.second->fdef().signature().name()<<std::endl;
+  }
+  // fout << "Debug string " << std::endl;
+  // fout << default_registry_->DebugString() << std::endl;
+
+  fout.close();
   if (iter != records_.end()) {
     if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
       return errors::InvalidArgument(
@@ -1708,6 +1718,13 @@ Status FunctionLibraryDefinition::LookUp(
     const string& op, const OpRegistrationData** op_reg_data) const {
   tf_shared_lock l(mu_);
   auto iter = records_.find(op);
+  std::ofstream outputFile("/tensorflow/TESTS/mylog.txt", std::ios::app);
+  outputFile << "Searching for " << op << std::endl;
+  for(auto s : ListFunctionNames()){
+    outputFile << "Function Name: " << s << std::endl; 
+  }
+
+  outputFile.close();
   if (iter != records_.end()) {
     *op_reg_data = &iter->second->op_registration_data();
     return OkStatus();

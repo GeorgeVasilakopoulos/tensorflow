@@ -150,6 +150,11 @@ bool IsComplex(const NodeDef& node) { return node.op() == "Complex"; }
 
 bool IsComplexAbs(const NodeDef& node) { return node.op() == "ComplexAbs"; }
 
+bool IsCall(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Call" || op == "RefCall";
+}
+
 bool IsConcat(const NodeDef& node) {
   return node.op() == "Concat" || node.op() == "ConcatV2";
 }
@@ -498,6 +503,11 @@ bool IsRetval(const NodeDef& node) {
   return node.op() == "_Retval" || node.op() == "_DeviceRetval";
 }
 
+bool IsReturn(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Return" || op == "RefReturn";
+}
+
 bool IsReverse(const NodeDef& node) {
   return node.op() == "Reverse" || node.op() == "ReverseV2";
 }
@@ -777,7 +787,7 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
 }
 
 bool ModifiesFrameInfo(const NodeDef& node) {
-  return IsEnter(node) || IsExit(node) || IsNextIteration(node);
+  return IsEnter(node) || IsExit(node) || IsNextIteration(node)  || IsCall(node) || IsReturn(node);
 }
 
 #define OPDEF_PROPERTY_HELPER(PROPERTY_CAP, PROPERTY)                      \

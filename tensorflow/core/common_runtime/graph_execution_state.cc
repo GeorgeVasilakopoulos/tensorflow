@@ -61,6 +61,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // IS_MOBILE_PLATFORM
 
+#include "tensorflow/core/util/event.pb.h"
+#include "tensorflow/core/util/events_writer.h"
+
 namespace tensorflow {
 
 namespace {
@@ -849,6 +852,29 @@ Status GraphExecutionState::OptimizeGraph(
     for (Node* node : optimized_graph->get()->nodes()) {
       node->set_assigned_device_name(node->requested_device());
     }
+
+    /*******************************************************************************************/
+    // Write an event, so that we can visualize this optimized graph in tensorboard
+    EventsWriter writer("Fully_Optimized");
+    Event event;
+    event.set_wall_time(1234);
+    event.set_step(34);
+
+    const size_t proto_size = new_graph.ByteSizeLong();
+    void* buf = port::Malloc(proto_size);
+    if (buf == nullptr) {
+      return tensorflow::errors::ResourceExhausted("Failed to allocate memory to serialize message of type '"
+              ,new_graph.GetTypeName(), "' and size ", proto_size);
+    }
+    new_graph.SerializeToArray(buf, proto_size);
+    const void* bf = buf;
+    event.set_graph_def(bf, proto_size);
+    writer.WriteEvent(event);
+    /*******************************************************************************************/
+    printf("Transformation passed successfully");
+
+
+
     return absl::OkStatus();
   } else {
     return errors::InvalidArgument("Meta Optimizer disabled");

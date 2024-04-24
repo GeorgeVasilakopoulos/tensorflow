@@ -1,0 +1,7 @@
+#!/bin/bash
+
+cd ..
+bazel build --disk_cache=~/mycache --config=dbg  //tensorflow/tools/pip_package:build_pip_package &&
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package /mnt &&
+pip uninstall tensorflow -y &&
+pip install /mnt/tensorflow-*.whl
