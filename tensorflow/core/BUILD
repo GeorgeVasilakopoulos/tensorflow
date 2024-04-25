@@ -579,6 +579,7 @@ cc_library(
         "//tensorflow/core/kernels:fact_op",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:filesystem_ops",
+        "//tensorflow/core/kernels:function_control_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:grappler",
@@ -915,6 +916,7 @@ filegroup(
         "encode_proto_ops_op_lib",
         "experimental_dataset_ops_op_lib",
         "filesystem_ops_op_lib",
+        "function_control_ops_op_lib",
         "function_ops_op_lib",
         "functional_grad",
         "functional_ops_op_lib",
@@ -1764,7 +1766,7 @@ alias(
 tf_cuda_library(
     name = "graph",
     srcs = ["//tensorflow/core/graph:graph_srcs"],
-    hdrs = ["//tensorflow/core/graph:graph_headers","//tensorflow/core/common_runtime:graph_constructor.h"],
+    hdrs = ["//tensorflow/core/graph:graph_headers"],
     deps = [
         ":framework",
         ":framework_internal",

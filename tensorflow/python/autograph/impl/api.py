@@ -321,8 +321,6 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   logging.log(1, 'Converted call: %s\n    args: %s\n    kwargs: %s\n', f, args,
               kwargs)
   
-  
-
   if options is None:
     if caller_fn_scope is None:
       raise ValueError('either caller_fn_scope or options must have a value')
@@ -339,10 +337,6 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
   if is_autograph_artifact(f):
     logging.log(2, 'Permanently allowed: %s: AutoGraph artifact', f)
     return _call_unconverted(f, args, kwargs, options)
-
-  
-  
- 
 
   # If this is a partial, unwrap it and redo all the checks.
   if isinstance(f, functools.partial):
