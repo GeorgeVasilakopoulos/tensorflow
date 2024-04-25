@@ -184,7 +184,7 @@ REGISTER_SYCL_HOST_KERNEL(string);
                           ReturnOp)
 
 REGISTER_GPU_HOST_KERNEL(int32);
-REGISTER_GPU_HOST_KERNEL(string);
+REGISTER_GPU_HOST_KERNEL(tstring);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
