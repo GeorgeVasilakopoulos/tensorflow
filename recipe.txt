@@ -17,7 +17,6 @@ COPY ./tensorflow /tensorflow
 
 RUN apt-get update && apt-get install clang -y \
     && apt-get install -y gdb \
-    && apt-get install -y patchelf
     && apt-get install -y git
 
 RUN echo "deb [arch=amd64] https://storage.googleapis.com/bazel-apt stable jdk1.8" | tee /etc/apt/sources.list.d/bazel.list > /dev/null
@@ -26,10 +25,14 @@ RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
 RUN apt update
 RUN apt install -y bazel-6.5.0
 RUN apt install -y bazel
-WORKDIR /tensorflow
 
-RUN bazel build --config=dbg //tensorflow/tools/pip_package:build_pip_package
-# RUN ./bazel-bin/tensorflow/tools/pip_package/build_pip_package /mnt
+RUN git clone https://github.com/GeorgeVasilakopoulos/tensorflow.git
+WORKDIR tensorflow
+RUN git checkout recursion
+
+
+bazel build --config=dbg //tensorflow/tools/pip_package:wheel --repo_env=WHEEL_NAME=tensorflow_cpu
+pip install bazel-bin/tensorflow/tools/pip_package/wheel_house/tensorflow_cpu-2.17.0-cp311-cp311-linux_x86_64.whl
 
 #############################################################
 

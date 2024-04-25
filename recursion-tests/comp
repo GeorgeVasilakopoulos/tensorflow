@@ -1,0 +1,5 @@
+#!/bin/bash
+
+cd ..
+bazel build --config=dbg //tensorflow/tools/pip_package:wheel --repo_env=WHEEL_NAME=tensorflow_cpu && 
+pip install bazel-bin/tensorflow/tools/pip_package/wheel_house/tensorflow_cpu-2.17.0-cp311-cp311-linux_x86_64.whl

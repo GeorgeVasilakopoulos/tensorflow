@@ -268,7 +268,6 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("pin_to_host", "pin_to_host_optimization",
          new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
-
   return std::unique_ptr<GraphOptimizer>();
 }
 
