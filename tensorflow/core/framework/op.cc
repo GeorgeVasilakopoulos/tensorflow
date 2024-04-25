@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op.h"
 
-#include <fstream>
-
 #include <algorithm>
 #include <memory>
 #include <utility>
