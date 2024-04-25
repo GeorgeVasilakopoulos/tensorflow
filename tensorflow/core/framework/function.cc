@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <ctype.h>
+
 #include <map>
 #include <string>
 #include <unordered_map>
