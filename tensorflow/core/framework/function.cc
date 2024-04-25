@@ -1437,7 +1437,7 @@ Status FunctionLibraryDefinition::AddFunctionRecord(
 Status FunctionLibraryDefinition::AddHelper(FunctionRecord* registration,
                                             bool* added) {
   *added = false;
-  auto iter = records_.find(registration->fdef().signature().name()); 
+  auto iter = records_.find(registration->fdef().signature().name());
   if (iter != records_.end()) {
     if (!FunctionDefsEqual(iter->second->fdef(), registration->fdef())) {
       return errors::InvalidArgument(
