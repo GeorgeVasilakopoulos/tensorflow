@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <fstream>
-
 #include "tensorflow/c/experimental/saved_model/core/revived_types/flat_tensor_function.h"
 
 #include <memory>
