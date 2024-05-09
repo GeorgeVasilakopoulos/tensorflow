@@ -1491,7 +1491,16 @@ Status AddFunctionStateMachines(const PartitionOptions& opts,
   FuncInfo funcInfo;
   int nodes_num = g->num_node_ids();
 
-  const FunctionDefLibrary& fdef = opts.flib_def->ToProto();
+
+  const FunctionLibraryDefinition* flib_def = opts.flib_def;
+  if(flib_def == nullptr){
+    flib_def = &(g->flib_def());
+  } 
+
+  const FunctionDefLibrary& fdef = flib_def->ToProto();
+
+
+
   for (const FunctionDef& func : fdef.function()) {
 
       int num_inputs = func.signature().input_arg_size();
