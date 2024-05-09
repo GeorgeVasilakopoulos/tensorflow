@@ -108,7 +108,7 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer" ||
-         absl::StartsWith(name, "auto_mixed_precision") || name == "function_optimizer";
+         absl::StartsWith(name, "auto_mixed_precision") || name == "function_transformation";
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -350,9 +350,9 @@ Status MetaOptimizer::InitializeOptimizers(
         USER_IS_EXPERIMENTAL_BOTH(function_optimization)) {
       VLOG(2) << "function_optimization is not implemented in TFG yet";
     } else {
-      optimizers->push_back(std::make_unique<FunctionOptimizer>(
-          cfg_.function_optimization(),
-          /*lower_control_flow=*/LowerControlFlow()));
+      // optimizers->push_back(std::make_unique<FunctionOptimizer>(
+      //     cfg_.function_optimization(),
+      //     /*lower_control_flow=*/LowerControlFlow()));
     }
   }
   if (BOTH_NOT_OFF(common_subgraph_elimination) &&
