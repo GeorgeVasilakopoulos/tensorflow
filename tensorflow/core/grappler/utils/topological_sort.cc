@@ -71,7 +71,7 @@ Status ComputeTopologicalOrder(
     }
     bool recursion_merge = false;
     if (IsMerge(graph.node(i))) {
-      for (int input : graph_view.GetFanin(i)) {
+      for (int input : graph_view.GetFanin(i)) {  
         if (IsNextIteration(graph.node(input))) {
           num_ready_inputs[i]++;
         }
@@ -88,6 +88,8 @@ Status ComputeTopologicalOrder(
       // Nodes that send their output to "Return" nodes are
       // function Returning Nodes and in case of recursive functions
       // those nodes are part of graph cycles.
+      int id = 0;
+      num_ready_inputs[i] = 0;
       for (int input : graph_view.GetFanin(i)) {
         // In order to detect the recursion cycles we depend on
         // the fact that a recursive function's returning node,
@@ -95,21 +97,22 @@ Status ComputeTopologicalOrder(
         // with different "call_id" attributes (same "call_id"
         // attrs would mean that they belong in the same function call
         // but they correspond to different function outputs)
-        // if (!StringPiece(graph.node(input)).starts_with("^")) {
-        if (true) {
+        if (!absl::StartsWith(graph.node(i).input(id), "^")) {
+        // if (true) {
           int call_id;
           TF_CHECK_OK(GetNodeAttr(graph.node(i), "call_id", &call_id));
           returning_nodes[input].emplace(call_id);
+          num_ready_inputs[i]++;
         }
+        id++;
       }
-      num_ready_inputs[i] = 0;
     }
   }
 
   for (const auto& retnode : returning_nodes) {
     if (retnode.second.size() > 1) {
       // Detected Cycle
-      num_ready_inputs[retnode.first]++;
+      // num_ready_inputs[retnode.first]++;
     }
   }
 
