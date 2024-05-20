@@ -306,7 +306,7 @@ Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
     // outputFile << "In collect calls: "<< std::endl;
     for (NodeDef& node : *graph->mutable_node()) {
         const FunctionDef* func = ctx.FindInlinedFunction(node.op());
-        // outputFile << "Collecting Calls: "<< node.name() << " " << node.op() << std::endl;
+        // printf("Collecting Calls: %s %s \n", node.name().c_str(), node.op().c_str());
         if (func != nullptr) {
             CallInfo call;
             call.call_id = GetCallId(node);
@@ -401,7 +401,7 @@ Status CallRewriter::TransformCall(CallInfo& call_info) {
 
     std::vector<NodeDef*> call_nodes;
     std::vector<NodeDef*> ret_nodes;
-
+ 
     call_nodes.resize(func_info.inputs.size());
     for (unsigned int arg_num = 0; arg_num < func_info.inputs.size(); arg_num++) {
         call_nodes[arg_num] = graph->add_node();
@@ -519,7 +519,7 @@ Status InlineFunction(const FunctionDef& func_def,
         if (input_it != input_nodes.end()) {
             CHECK_EQ(0, func_body_node.input_size());
             // Turn input placeholders into identity nodes
-            if (IsPlaceholder(func_body_node)) {
+            if (IsArg(func_body_node)) {
                 func_body_node.set_op(kIdentityOp);
             }
             // Connect merge with input arg
@@ -529,6 +529,10 @@ Status InlineFunction(const FunctionDef& func_def,
             // Update the input names if any.
             for (string& input : *func_body_node.mutable_input()) {
                 input = AddPrefixToNodeName(input, prefix);
+            }
+           // If this is a return node, change the op to KIdentityOp
+            if(IsRetval(func_body_node)){
+                func_body_node.set_op(kIdentityOp);
             }
             // If the node has no input, make hook it up to the Merge nodes to ensure
             // it runs in the same frame as the other nodes of the function body.

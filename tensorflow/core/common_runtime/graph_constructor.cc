@@ -301,7 +301,7 @@ class GraphConstructor {
 
   // Decrement pending count for users of `processed` and add the ones that now
   // have all of their pending inputs satisfied to `ready_`.
-  void UpdatePendingCountAndReady(int processed, bool is_next_iteration);
+  void UpdatePendingCountAndReady(int processed, bool is_next_iteration, bool is_function_call);
 
   // Subclasses override the following virtual methods to provide efficient
   // access to the original protocol buffer-based graph.
@@ -576,20 +576,21 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
 }
 
 void GraphConstructor::UpdatePendingCountAndReady(int processed,
-                                                  bool is_next_iteration) {
+                                                  bool is_next_iteration, bool is_function_call) {
   for (size_t i = 0; i < outputs_[processed].size(); ++i) {
     const int output = outputs_[processed][i];
     // We didn't consider NextIteration->Merge edges when computing
     // pending_counts_ so we should not have to consider it here either.
     bool is_next_iteration_to_merge_edge =
         is_next_iteration && merge_node_indices_.count(output) == 1;
-    if (!is_next_iteration_to_merge_edge) {
-      int* current_pending_count = &pending_count_[output];
-      CHECK_GT(*current_pending_count, 0);
-      (*current_pending_count)--;
-      if (*current_pending_count == 0) {
-        ready_.insert(output);
-      }
+    if (is_next_iteration_to_merge_edge)continue;
+    int* current_pending_count = &pending_count_[output];
+    if (*current_pending_count == 0 && is_function_call) continue;
+    if (*current_pending_count == 0 && merge_node_indices_.count(output) == 1) continue;
+    CHECK_GT(*current_pending_count, 0);
+    (*current_pending_count)--;
+    if (*current_pending_count == 0) {
+      ready_.insert(output);
     }
   }
 }
@@ -784,10 +785,24 @@ Status GraphConstructor::InitFromEdges() {
   }
 
   gtl::FlatSet<string> call_nodes;
+  gtl::FlatSet<string> merge_return_nodes;
   for (int n = 0; n < node_def_count(); ++n) {
     const NodeDef& node_def = get_node_def(n);
     if (IsCall(node_def)) {
       call_nodes.insert(node_def.name());
+    }
+    if (!IsMerge(node_def) && IsReturningNode(node_def)){
+      for (const auto& input_name : node_def.input()) {
+        if (!absl::StartsWith(input_name, "^")) {
+          string prevNode = input_name;
+          size_t pos = input_name.find(":");
+          
+          if (pos != std::string::npos)
+            prevNode = input_name.substr(0, pos);
+          
+          merge_return_nodes.insert(prevNode);
+        }
+      }  
     }
   }
 
@@ -816,7 +831,9 @@ Status GraphConstructor::InitFromEdges() {
           if (next_iteration_nodes.find(string(id.first)) !=
               next_iteration_nodes.end()||
               call_nodes.find(string(id.first)) !=
-              call_nodes.end()) {
+              call_nodes.end()||
+              merge_return_nodes.find(node_def.name()) != 
+              merge_return_nodes.end()) {
             has_loop_back_edge = true;
           }
         }
@@ -1296,7 +1313,7 @@ Status GraphConstructor::Convert() {
         TF_RETURN_IF_ERROR(IsNodeFullyMapped(node_def, &is_node_mapped));
         if (is_node_mapped) {
           // Skip this node after updating pending_count_ for outputs
-          UpdatePendingCountAndReady(o, IsNextIteration(node_def));
+          UpdatePendingCountAndReady(o, IsNextIteration(node_def), IsCall(node_def));
           continue;
         }
       }
@@ -1422,7 +1439,7 @@ Status GraphConstructor::Convert() {
     TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
-    UpdatePendingCountAndReady(o, node->IsNextIteration());
+    UpdatePendingCountAndReady(o, node->IsNextIteration(), node->IsCall());
   }
 
   if (processed < node_def_count()) {
