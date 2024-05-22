@@ -190,7 +190,21 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     } else {
       item->is_constant_enter = false;
     }
+    
     item->is_call = IsCall(n);
+    
+    if(item->is_call){
+      string frame_name;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &frame_name));
+      FrameInfo* frame_info = frame_info_[frame_name].get();
+      frame_info->parallel_iterations = 1;
+      if (call_frame_info_.size() <= id) {
+        call_frame_info_.resize(id + 1);
+      }
+      call_frame_info_[id] = frame_info;
+    }
+
+
     item->is_return = IsReturn(n);
     item->is_call_or_return = (IsCall(n) || IsReturn(n));
     item->is_exit = IsExit(n);

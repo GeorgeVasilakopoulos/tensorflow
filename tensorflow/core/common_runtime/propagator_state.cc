@@ -7,7 +7,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on a:n "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -97,8 +97,10 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     //  printf("Propagate Outputs: %s,  am i alive? %d\n", node->name().c_str(), !is_dead);
     //  printf("Frame: %s\n", input_frame->frame_name.c_str());
 
-    // printf("Propagate Outputs: %s,  am i alive? %d\n", node->name().c_str(), !is_dead);
-    // printf("Frame: %s\n", input_frame->frame_name.c_str());
+    string output(tagged_node.node_item->kernel->name_view());
+
+    printf("Propagate Outputs: %s,  am i alive? %d\n",output.c_str(), !is_dead);
+    printf("Frame: %s\n", input_frame->frame_name.c_str());
 
 
   if (!item->is_enter_exit_or_next_iter && !item->is_call_or_return) {
@@ -149,7 +151,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     //      output_frame = nullptr;
     //    } else {
     FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
-    output_iter = 0;
+    output_iter = output_frame->GetIteration(0);
     {
       mutex_lock l(output_frame->mu);
       int activated = output_frame->ActivateNodesLocked(
@@ -298,7 +300,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
                                              FrameState** child) {
   // Get the child frame name.
   const ImmutableExecutorState::FrameInfo& frame_info =
-      immutable_state_.get_enter_frame_info(node_item);
+      node_item.is_enter ? immutable_state_.get_enter_frame_info(node_item) : immutable_state_.get_call_frame_info(node_item);
 
   const uint64 child_id = Hash64Combine(
       frame->frame_id,
