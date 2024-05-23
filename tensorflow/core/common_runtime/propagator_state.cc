@@ -99,8 +99,8 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
 
     string output(tagged_node.node_item->kernel->name_view());
 
-    printf("Propagate Outputs: %s,  am i alive? %d\n",output.c_str(), !is_dead);
-    printf("Frame: %s\n", input_frame->frame_name.c_str());
+    // printf("Propagate Outputs: %s,  am i alive? %d\n",output.c_str(), !is_dead);
+    // printf("Frame: %s\n", input_frame->frame_name.c_str());
 
 
   if (!item->is_enter_exit_or_next_iter && !item->is_call_or_return) {
@@ -151,6 +151,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     //      output_frame = nullptr;
     //    } else {
     FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
+    // printf("Inside Call: %s. Input frame id: %d, Output frame id %d\n", output.c_str(),input_frame->frame_id,output_frame->frame_id);
     output_iter = output_frame->GetIteration(0);
     {
       mutex_lock l(output_frame->mu);
@@ -167,6 +168,7 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     //    } else {
     output_frame = input_frame->parent_frame;
     output_iter = input_frame->parent_iter;
+    // printf("Inside Return: %s. Input frame id: %d, Output frame id %d\n", output.c_str(),input_frame->frame_id,output_frame->frame_id);
     {
       mutex_lock l(output_frame->mu);
       int activated = output_frame->ActivateNodesLocked(
@@ -304,7 +306,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
 
   const uint64 child_id = Hash64Combine(
       frame->frame_id,
-      Hash64Combine(iter_state->iter_num, Hash64(frame_info.name)));
+      Hash64Combine(iter_state->iter_num, Hash64(frame_info.name + ":" + std::to_string(node_item.call_id))));
 
   {
     tf_shared_lock executor_lock(frame->mu);
