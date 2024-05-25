@@ -7,46 +7,38 @@ import tensorflow as tf
 from tensorflow.python.framework import function
 
 tf.compat.v1.disable_eager_execution()
+tf.compat.v1.disable_control_flow_v2()
+
 
 cluster = tf.train.ClusterSpec({"local": ["localhost:2222", "localhost:2223"]})
 
-fib = function.Declare("Fib", [("n", tf.int32)], [("ret", tf.int32)])
+fac = function.Declare("Fac", [("n", tf.int32)], [("ret", tf.int32)])
 
 
 
 
-@function.Defun(tf.int32, func_name="Minus2", out_names=["ret"])
-def M2(n):
-	return (n-2)
 
-@function.Defun(tf.int32, func_name="Minus1", out_names=["ret"])
-def M1(n):
-	return (n-1)
-
-
-
-
-@function.Defun(tf.int32, func_name="Fib", out_names=["ret"])
-def FibImpl(n):
+@function.Defun(tf.int32, func_name="Fac", out_names=["ret"])
+def FacImpl(n):
 
 	def f1(): 
-		with tf.device("/job:local/replica:0/task:0/device:CPU:0"):
+		with tf.device("/job:local/replica:0/task:1/device:CPU:0"):
 			ret = tf.constant(1)
 		return ret
 	def f2(): 
 		with tf.device("/job:local/replica:0/task:0/device:CPU:0"):
-			fib1 = M1(n)
-		with tf.device("/job:local/replica:0/task:0/device:CPU:0"): 
-			fib2 = M2(n)
-		
-		return fib1 + fib2
+			ret = n * fac(n - 1)
+		return ret
 
-	return tf.cond(tf.less_equal(n, 1), f1, f2)
+	with tf.device("/job:local/replica:0/task:0/device:CPU:0"):
+		pred = tf.less_equal(n, 1)
 
-FibImpl.add_to_graph(tf.compat.v1.get_default_graph())
+	return tf.cond(pred, f1, f2)
 
-n = tf.constant(11)
-x = fib(n)
+FacImpl.add_to_graph(tf.compat.v1.get_default_graph())
+
+n = tf.constant(10)
+x = fac(n)
 
 #print(tf.get_default_graph().as_graph_def())
 
