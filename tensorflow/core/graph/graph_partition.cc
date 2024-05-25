@@ -1424,7 +1424,7 @@ Status CallingFunction(Graph* graph, GraphDef& main_graphDef, StateMachine& stat
             }
           }
         } else
-            ConnectMergeToNode(main_graphDef, merge->name(), out->name(), state_machine, dst_device);
+            if(merge->name() != out->name()) ConnectMergeToNode(main_graphDef, merge->name(), out->name(), state_machine, dst_device);
       }
 
       if (ready_inputs[out] == out->in_edges().size()) {
@@ -1527,7 +1527,7 @@ Status AddFunctionStateMachines(const PartitionOptions& opts,
   // We convert graph to its equivalent graph_def, cause it's easier
   // to extend it with the GraphDef state machines of partitions
   g->ToGraphDef(&main_graphDef);
-
+  
   while (!ready_nodes.empty()) {
     Node* ready_node = ready_nodes.front();
     ready_nodes.pop_front();
