@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/core/util/events_writer.h"
 
 #include "tensorflow/core/common_runtime/graph_constructor.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -89,6 +91,17 @@ class FunctionInliningContext {
         // if (func.attr().count("_noinline") != 0) {
         //   continue;
         // }
+
+        std::unique_ptr<FunctionBody> fbody;
+        Status stat = FunctionDefToBodyHelper(
+          func, AttrSlice(&func.attr()), &function_library_, &fbody);
+        
+        fbody = SymbolicGradient(*fbody);
+
+
+
+        printf("Gradient graph %s\n\n",SummarizeGraphDef((fbody)->graph->ToGraphDefDebug()).c_str());
+
         // Don't touch anything marked XLA to prevent XLA failures further down
         // the road.
         if (func.attr().count("_XlaCompile") > 0 &&
@@ -599,10 +612,6 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
                                         GraphDef* output) {
     
     
-    
-    // outputFile << "In Optimize" << std::endl;
-    
-
     FunctionInliningContext ctx(item);
     CallRewriter call_rewriter(item, output, ctx);
 
