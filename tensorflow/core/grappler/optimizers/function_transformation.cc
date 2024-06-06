@@ -404,9 +404,6 @@ Status InlineFunction(const FunctionDef& func_def,
             // If the func body node is func's input argument
             // Turn input placeholders into identity nodes
             func_body_node.set_op(kIdentityOp);
-            (*func_body_node.mutable_attr())["T"] = func_body_node.attr().at("dtype");
-            func_body_node.mutable_attr()->erase("dtype");
-            func_body_node.mutable_attr()->erase("shape");
             // Connect merge with input arg
             int idx = input_nodes[curr_name];
             func_body_node.add_input(func_info.f.args[idx]->name());
@@ -416,6 +413,11 @@ Status InlineFunction(const FunctionDef& func_def,
             for (string& input : *func_body_node.mutable_input()) {
                 input = AddPrefixToNodeName(input, prefix);
             }
+            // If this is a return node, change the op to KIdentityOp
+            if(IsRetval(func_body_node)){
+                func_body_node.set_op(kIdentityOp);
+            }
+
             // If the node has no input, make hook it up to the Merge nodes to ensure
             // it runs in the same frame as the other nodes of the function body.
             if (func_body_node.input_size() == 0) {
@@ -520,9 +522,6 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
         if (is_input) {
           CHECK_EQ(0, n.input_size());
           n.set_op(kIdentityOp);
-          (*n.mutable_attr())["T"] = n.attr().at("dtype");
-          n.mutable_attr()->erase("dtype");
-          n.mutable_attr()->erase("shape");
         }
 
         // Add the node name as a prefix to avoid collisions after inlining
@@ -540,6 +539,9 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
           auto& attr = *n.mutable_attr();
           auto& n_ = attr["_n"].s();
           attr["_n"].set_s(AddPrefixToNodeName(n_, prefix));
+        }
+        if(IsRetval(n)){
+          n.set_op(kIdentityOp);
         }
 
         // If the node has no input, make hook it up to the Merge nodes to ensure
