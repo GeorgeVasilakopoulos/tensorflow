@@ -462,7 +462,7 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
     const FunctionDef* fgdef = ctx.FindInlinedFunctionAndGradient(fdef.signature().name());
     if (fgdef == nullptr) {
         return errors::InvalidArgument(
-                "Invalid argument, function ", fgdef->signature().name(), "can not be found",
+                "Invalid argument, gradient of function ", fdef.signature().name(), "can not be found",
                 "or not marked to be inlined");
     }
 
@@ -604,8 +604,9 @@ Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
         }
     }
     for (NodeDef* gcall : gradients) {
-        if (gcall->attr().count("_n") > 0) {
-          const string& n = gcall->attr().at("_n").s();
+        if (gcall->attr().count("f") > 0) {
+          printf("Debug string: %s \n\n", gcall->attr().at("f").DebugString().c_str());
+          const string& n = gcall->attr().at("f").func().name();
         
           auto fcall_it = call_map.find(n);
           if (fcall_it == call_map.end()) {
