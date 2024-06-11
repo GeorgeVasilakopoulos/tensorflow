@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/common_runtime/function_def_utils.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
@@ -155,6 +157,13 @@ class FunctionInliningContext {
       return function_library_; 
     }
 
+    Status AddFunctionDef(const FunctionDef& fdef) {
+      TF_RETURN_IF_ERROR(function_library_.AddFunctionDef(fdef));
+      inlined_functions_[fdef.signature().name()] = function_library_.Find(fdef.signature().name());
+      return OkStatus();
+    }
+
+
     bool HasInlinedFunctions() const { return !inlined_functions_.empty(); }
 
     bool IsInlinedFunction(const string& name) const {
@@ -234,7 +243,7 @@ struct TransformationResult {
 class CallRewriter {
 
   public:
-    explicit CallRewriter(const GrapplerItem& item_, GraphDef* graph_, const FunctionInliningContext& ctx_)
+    explicit CallRewriter(const GrapplerItem& item_, GraphDef* graph_, FunctionInliningContext& ctx_)
         : graph(graph_), ctx(ctx_), item(item_) { }
 
     ~CallRewriter() {
@@ -292,7 +301,7 @@ class CallRewriter {
     }
 
     GraphDef* graph;
-    const FunctionInliningContext& ctx;
+    FunctionInliningContext& ctx;
     const GrapplerItem& item;
     std::unordered_map<string, FuncGradInfo> transformed_functions_;
     std::unordered_map<string, string> output_map_;
@@ -454,33 +463,59 @@ Status InlineFunction(const FunctionDef& func_def,
 
 Status InlineFunctionAndGradient(const FunctionDef& fdef,
                       const AttrSlice& func_instantiation_attr,
-                      const FunctionInliningContext& ctx,
+                      FunctionInliningContext& ctx,
                       const string& device,
                       GraphDef* graph, 
                       FuncGradInfo& func_info) {
     // Get func_def's gradient graph
-    const FunctionDef* fgdef = ctx.FindInlinedFunctionAndGradient(fdef.signature().name());
-    if (fgdef == nullptr) {
-        return errors::InvalidArgument(
-                "Invalid argument, gradient of function ", fdef.signature().name(), "can not be found",
-                "or not marked to be inlined");
-    }
+    
+    // const FunctionDef* fgdef = ctx.FindInlinedFunctionAndGradient(fdef.signature().name());
+    // if(fgdef == nullptr){
+    //   std::unique_ptr<FunctionBody> fbody;
+    //   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(fdef,AttrSlice(&fdef.attr()),&ctx.FunctionLibrary(), &fbody));
 
-    GrapplerFunctionItem item;
-    const int graph_version = graph->versions().producer();
-    TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(*fgdef, func_instantiation_attr, ctx.FunctionLibrary(), graph_version, &item));
+    //   printf("Original graph %s\n\n",SummarizeGraphDef((fbody)->graph->ToGraphDefDebug()).c_str());
+
+    //   fbody = SymbolicGradient(*fbody);
+
+    //   printf("Gradient graph %s\n\n",SummarizeGraphDef((fbody)->graph->ToGraphDefDebug()).c_str());
+
+    //   FunctionDef graddef = fbody->record->fdef();
+    //   printf("Debug string: %s\n",graddef.DebugString().c_str());
+    //   std::string grad_name = strings::StrCat(fdef.signature().name(), "Grad");
+    //   graddef.mutable_signature()->set_name(grad_name);
+    //   TF_RETURN_IF_ERROR(ctx.AddFunctionDef(graddef));
+    //   fgdef = ctx.FindInlinedFunctionAndGradient(fdef.signature().name());
+    // }
+    GraphDef grad_graph;
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(fdef,AttrSlice(&fdef.attr()),&ctx.FunctionLibrary(), &fbody));
+
+    printf("Original graph %s\n\n",SummarizeGraphDef((fbody)->graph->ToGraphDefDebug()).c_str());
+
+    fbody = SymbolicGradient(*fbody);
+
+    printf("Gradient graph %s\n\n",SummarizeGraphDef((fbody)->graph->ToGraphDefDebug()).c_str());
+
+    fbody->graph->ToGraphDef(&grad_graph);
+    
+    
+
+    // GrapplerFunctionItem item;
+    const int graph_version = fbody->graph->versions().producer();
+    // TF_RETURN_IF_ERROR(MakeGrapplerFunctionItem(*fgdef, func_instantiation_attr, ctx.FunctionLibrary(), graph_version, &item));
 
     string prefix = fdef.signature().name();
     size_t farg_size = fdef.signature().input_arg_size();
     size_t fret_size = fdef.signature().output_arg_size();
-    size_t garg_size = fgdef->signature().input_arg_size() - farg_size;
-    size_t gret_size = fgdef->signature().output_arg_size() - fret_size;
+    size_t garg_size = fbody->arg_nodes.size();// - farg_size;
+    size_t gret_size = fbody->ret_nodes.size() - fret_size;
 
     CHECK_EQ(farg_size, gret_size);
-    CHECK_EQ(garg_size, fret_size);
+    CHECK_EQ(garg_size, fret_size + farg_size);
 
     func_info.f.arg_types.resize(farg_size);
-    func_info.g.arg_types.resize(farg_size + garg_size);
+    func_info.g.arg_types.resize(garg_size);
     func_info.g.ret_types.resize(farg_size);
     for (int i = 0; i < farg_size; i++) {
       const OpDef::ArgDef& input_arg = fdef.signature().input_arg(i);
@@ -491,30 +526,29 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
 
     func_info.f.ret_types.resize(fret_size);
     for (int i = 0; i < fret_size; i++) {
-      const OutputArgInstantiation& output_arg = item.output(i);
-      func_info.f.ret_types[i] = output_arg.data_type;
-      func_info.g.arg_types[farg_size + i] = output_arg.data_type;
+      // const OutputArgInstantiation& output_arg = item.output(i);
+      func_info.f.ret_types[i] = fbody->ret_types[i];
+      func_info.g.arg_types[farg_size + i] = fbody->ret_types[i];
     }
 
     // create an inverse map of arg to provide name -> argument number
     std::unordered_map<string, int> input_map;
     std::vector<string> input_names;
     input_names.resize(farg_size);
-    for (int i = 0; i < farg_size + garg_size; ++i) {
-        const OpDef::ArgDef& input_arg = fdef.signature().input_arg(i);
-        input_map[input_arg.name()] = i;
+    for (int i = 0; i < garg_size; ++i) {
+        input_map[fbody->arg_nodes[i]->name()] = i;
         if (i < farg_size) {
-          input_names[i] = input_arg.name();
+          input_names[i] = fbody->arg_nodes[i]->name();
         }
     }
     func_info.f.args.resize(farg_size);
     func_info.f.rets.resize(fret_size);
-    func_info.g.args.resize(farg_size + garg_size);
+    func_info.g.args.resize(garg_size);
     func_info.g.rets.resize(gret_size);
 
     // prefix each node in function graph and place it to the global graph.
     // the inputs of each node need to be renamed as well to reflect the change.
-    for (NodeDef& n : *item.mutable_function_body().mutable_node()) {
+    for (NodeDef& n : *grad_graph.mutable_node()) {
         // If the func body node is func's input argument
         auto input_it = input_map.find(n.name());
         bool is_input = input_it != input_map.end();
@@ -535,11 +569,11 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
         if (n.device().empty())
           n.set_device(device);
 
-        if (n.op() == kGradientOp) {
-          auto& attr = *n.mutable_attr();
-          auto& n_ = attr["_n"].s();
-          attr["_n"].set_s(AddPrefixToNodeName(n_, prefix));
-        }
+        // if (n.op() == kGradientOp) {
+        //   auto& attr = *n.mutable_attr();
+        //   std::string& name = *attr.at("f").mutable_func()->mutable_name();
+        //   name = AddPrefixToNodeName(name, prefix);
+        // }
         if(IsRetval(n)){
           n.set_op(kIdentityOp);
         }
@@ -569,11 +603,10 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
         }
     }
 
-    CHECK_EQ(fret_size + gret_size, item.fetch.size());
+    CHECK_EQ(fret_size + gret_size, fbody->arg_nodes.size());
 
     for (unsigned int i = 0; i < fret_size + gret_size; i++) {
-        const OutputArgInstantiation& output_arg = item.output(i);
-        string output_port = AddPrefixToNodeName(output_arg.node_name, prefix);
+        string output_port = AddPrefixToNodeName(fbody->ret_nodes[i]->name(), prefix);
         if (i < fret_size) {
           func_info.f.rets[i] = output_port;
         } else {
@@ -843,6 +876,8 @@ Status FunctionTransformation::Optimize(Cluster* cluster, const GrapplerItem& it
     CallRewriter call_rewriter(item, output, ctx);
 
     *output = item.graph;
+
+    printf("Before optimizer: %s\n\n",SummarizeGraphDef(*output).c_str());
     if (!ctx.HasInlinedFunctions()) {
         return OkStatus();
     }
