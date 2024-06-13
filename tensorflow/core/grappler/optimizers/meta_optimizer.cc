@@ -350,9 +350,9 @@ Status MetaOptimizer::InitializeOptimizers(
         USER_IS_EXPERIMENTAL_BOTH(function_optimization)) {
       VLOG(2) << "function_optimization is not implemented in TFG yet";
     } else {
-      // optimizers->push_back(std::make_unique<FunctionOptimizer>(
-      //     cfg_.function_optimization(),
-      //     /*lower_control_flow=*/LowerControlFlow()));
+      optimizers->push_back(std::make_unique<FunctionOptimizer>(
+          cfg_.function_optimization(),
+          /*lower_control_flow=*/LowerControlFlow()));
     }
   }
   if (BOTH_NOT_OFF(common_subgraph_elimination) &&
