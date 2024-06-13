@@ -509,26 +509,28 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
     size_t farg_size = fdef.signature().input_arg_size();
     size_t fret_size = fdef.signature().output_arg_size();
     size_t garg_size = fbody->arg_nodes.size();// - farg_size;
-    size_t gret_size = fbody->ret_nodes.size() - fret_size;
+    size_t gret_size = fbody->ret_nodes.size();// - fret_size;
 
-    CHECK_EQ(farg_size, gret_size);
+    CHECK_EQ(farg_size, gret_size - fret_size);
     CHECK_EQ(garg_size, fret_size + farg_size);
 
     func_info.f.arg_types.resize(farg_size);
     func_info.g.arg_types.resize(garg_size);
-    func_info.g.ret_types.resize(farg_size);
+    func_info.g.ret_types.resize(gret_size);
     for (int i = 0; i < farg_size; i++) {
       const OpDef::ArgDef& input_arg = fdef.signature().input_arg(i);
       func_info.f.arg_types[i] = input_arg.type();
       func_info.g.arg_types[i] = input_arg.type();
-      func_info.g.ret_types[i] = input_arg.type();
     }
 
     func_info.f.ret_types.resize(fret_size);
-    for (int i = 0; i < fret_size; i++) {
+    for (int i = 0; i < gret_size; i++) {
       // const OutputArgInstantiation& output_arg = item.output(i);
-      func_info.f.ret_types[i] = fbody->ret_types[i];
-      func_info.g.arg_types[farg_size + i] = fbody->ret_types[i];
+      if(i < fret_size){
+        func_info.f.ret_types[i] = fbody->ret_types[i];
+        func_info.g.arg_types[farg_size + i] = fbody->ret_types[i];
+      }
+      func_info.g.ret_types[i] = fbody->ret_types[i];
     }
 
     // create an inverse map of arg to provide name -> argument number
@@ -603,15 +605,14 @@ Status InlineFunctionAndGradient(const FunctionDef& fdef,
         }
     }
 
-    CHECK_EQ(fret_size + gret_size, fbody->arg_nodes.size());
+    CHECK_EQ(gret_size, fbody->arg_nodes.size());
 
-    for (unsigned int i = 0; i < fret_size + gret_size; i++) {
+    for (unsigned int i = 0; i < gret_size; i++) {
         string output_port = AddPrefixToNodeName(fbody->ret_nodes[i]->name(), prefix);
         if (i < fret_size) {
           func_info.f.rets[i] = output_port;
-        } else {
-          func_info.g.rets[i - fret_size] = output_port;
         }
+        func_info.g.rets[i] = output_port;
     }
 
     return OkStatus();
@@ -629,7 +630,7 @@ Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
         } else {
             const FunctionDef* func_def = ctx.FindInlinedFunction(node.op());
             if (func_def != nullptr) {
-                CallInfo& call = call_map[node.name()];
+                CallInfo& call = call_map[node.op()];
                 call.call_id = GetCallId(node);
                 call.call_frame = node.op();
                 call.fcall  = &node;
@@ -643,8 +644,9 @@ Status CallRewriter::CollectCalls(std::vector<CallInfo>& calls) {
         
           auto fcall_it = call_map.find(n);
           if (fcall_it == call_map.end()) {
-              return errors::InvalidArgument("Cannot find forward node for gradient ",
-                      gcall->name());
+              // return errors::InvalidArgument("Cannot find forward node for gradient ",
+              //         gcall->name());
+            continue;
           }
           CallInfo& call = fcall_it->second;
           call.gcall = gcall;
@@ -775,6 +777,7 @@ Status CallRewriter::TransformCall(const CallInfo& call_info) {
       grad_result.call_frame = call_info.call_frame;
       grad_result.transformed_node = call_info.gcall;
       grad_result.call_nodes = result.call_nodes;
+      grad_result.ret_nodes = result.ret_nodes;
       // keep all the inputs of the function
       TF_RETURN_IF_ERROR(TransformNode(call_info, call_info.gcall, func_info.g, grad_result.call_nodes, grad_result.ret_nodes));
       MarkTransformed(grad_result);
