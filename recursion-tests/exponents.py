@@ -17,8 +17,8 @@ exp = function.Declare("EXPONENT", [("x", tf.float32), ("n", tf.int32)], [("ret"
 @function.Defun(tf.float32, tf.int32, func_name="EXPONENT", out_names=["ret"])
 def ExpImpl(x, n):
     return tf.cond(tf.equal(n,0),
-                lambda: tf.cast(tf.constant(1),tf.float32),
-                lambda: x*x)
+                lambda: tf.constant(1.0),
+                lambda: x*exp(x,n-1))
 
 
 # @function.Defun(tf.int32, func_name="Fac", out_names=["ret"])
@@ -34,7 +34,7 @@ ExpImpl.add_to_graph(tf.compat.v1.get_default_graph())
 x = tf.compat.v1.get_variable('n_var', [], initializer=tf.constant_initializer(4.0))
 y = ExpImpl(x,2)
 
-train_op = tf.compat.v1.train.GradientDescentOptimizer(0.01).minimize(y)
+train_op = tf.compat.v1.train.GradientDescentOptimizer(0.1).minimize(y)
 print(tf.compat.v1.get_default_graph().as_graph_def())
 
 
