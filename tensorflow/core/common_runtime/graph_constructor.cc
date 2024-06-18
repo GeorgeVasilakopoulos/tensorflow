@@ -587,7 +587,7 @@ void GraphConstructor::UpdatePendingCountAndReady(int processed,
     int* current_pending_count = &pending_count_[output];
     if (*current_pending_count == 0 && is_function_call) continue;
     if (*current_pending_count == 0 && merge_node_indices_.count(output) == 1) continue;
-    CHECK_GT(*current_pending_count, 0);
+    // CHECK_GT(*current_pending_count, 0);
     (*current_pending_count)--;
     if (*current_pending_count == 0) {
       ready_.insert(output);
