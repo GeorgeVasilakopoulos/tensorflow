@@ -267,7 +267,8 @@ class CallRewriter {
     Status TransformNode(const CallInfo& info, 
             NodeDef* call, const FuncInfo& f, 
             std::vector<NodeDef*>& call_nodes,
-            std::vector<NodeDef*>& ret_nodes);
+            std::vector<NodeDef*>& ret_nodes,
+            bool is_gradient_node);
 
     void ReplaceOutput(const string& old_output, const string& new_output) {
         // maybe some more checks
@@ -316,7 +317,7 @@ Status AddCallOp(const CallInfo& call_info,
                const DataType& type,
                const string& input,
                const string& prefix,
-               int arg_id, NodeDef* call) {
+               int arg_id, NodeDef* call, bool is_gradient_call = false) {
     string call_name = strings::StrCat("Call", "_", arg_id);
     call->set_op(kCallOp);
     call->set_name(AddPrefixToNodeName(call_name, prefix));
@@ -329,6 +330,7 @@ Status AddCallOp(const CallInfo& call_info,
     attr["call_id"].set_i(call_info.call_id);
     attr["arg_id"].set_i(arg_id);
     attr["is_constant"].set_b(false);
+    attr["is_gradient"].set_b(is_gradient_call);
 
     return OkStatus();
 }
@@ -337,7 +339,7 @@ Status AddRetOp(const CallInfo& call_info,
               const DataType& type,
               const string& input,
               const string& prefix,
-              int arg_id, NodeDef* ret) {
+              int arg_id, NodeDef* ret, bool is_gradient_return = false) {
     string ret_name = strings::StrCat("Ret", "_", arg_id);
     ret->set_op(kRetOp);
     ret->set_name(AddPrefixToNodeName(ret_name, prefix));
@@ -348,6 +350,7 @@ Status AddRetOp(const CallInfo& call_info,
     attr["frame_name"].set_s(call_info.call_frame);
     attr["call_id"].set_i(call_info.call_id);
     attr["arg_id"].set_i(arg_id);
+    attr["is_gradient"].set_b(is_gradient_return);
 
     return OkStatus();
 }
@@ -663,7 +666,7 @@ Status CallRewriter::TransformNode(const CallInfo& info,
         NodeDef* call, 
         const FuncInfo& f, 
         std::vector<NodeDef*>& call_nodes,
-        std::vector<NodeDef*>& ret_nodes) {
+        std::vector<NodeDef*>& ret_nodes, bool is_gradient_node = false) {
   CHECK_EQ(call->input_size(), f.args.size());
 
   call_nodes.resize(f.args.size());
@@ -680,7 +683,8 @@ Status CallRewriter::TransformNode(const CallInfo& info,
                 call->input(i),
                 call->name(),
                 i,
-                call_nodes[i]));
+                call_nodes[i],
+                is_gradient_node));
 
         call_nodes[i]->set_device(call->device());
 
@@ -714,7 +718,8 @@ Status CallRewriter::TransformNode(const CallInfo& info,
                 f.rets[i],
                 call->name(),
                 i,
-                ret_nodes[i]));
+                ret_nodes[i],
+                is_gradient_node));
         ret_nodes[i]->set_device(call->device());
       }
   }
@@ -741,17 +746,20 @@ Status CallRewriter::TransformNode(const CallInfo& info,
       for (unsigned int i = 0; i < f.rets.size(); i++) {
           ReplaceOutput(strings::StrCat(call->name(), ":", i), ret_nodes[i]->name());
       }
-//      if (f.rets.size() == 1) {
+     if (f.rets.size() == 1) {
       ReplaceOutput(call->name(), ret_nodes[0]->name());
-//      }
+     }
   }
 
   // for each call create a control dependency to each return
   // to facilitate dead propagation semantics
   for (NodeDef* ret : ret_nodes) {
-      for (NodeDef* call : call_nodes)
+      for (NodeDef* call : call_nodes){
+        if(ret->attr().at("is_gradient").b() != call->attr().at("is_gradient").b()) continue;
+        printf("Adding control edge from %s to %s\n",call->name().c_str(),ret->name().c_str());
         // TODO: Check if there is already a control dependency.
         *(ret->add_input()) = AsControlDependency(call->name());
+        }
   }
 
   return OkStatus();
@@ -768,7 +776,7 @@ Status CallRewriter::TransformCall(const CallInfo& call_info) {
     result.call_frame = call_info.call_frame;
     result.transformed_node = call_info.fcall;
 
-    TF_RETURN_IF_ERROR(TransformNode(call_info, call_info.fcall, func_info.f, result.call_nodes, result.ret_nodes));
+    TF_RETURN_IF_ERROR(TransformNode(call_info, call_info.fcall, func_info.f, result.call_nodes, result.ret_nodes,false));
     MarkTransformed(result);
 
     if (call_info.hasGradient()) {
@@ -779,7 +787,7 @@ Status CallRewriter::TransformCall(const CallInfo& call_info) {
       grad_result.call_nodes = result.call_nodes;
       grad_result.ret_nodes = result.ret_nodes;
       // keep all the inputs of the function
-      TF_RETURN_IF_ERROR(TransformNode(call_info, call_info.gcall, func_info.g, grad_result.call_nodes, grad_result.ret_nodes));
+      TF_RETURN_IF_ERROR(TransformNode(call_info, call_info.gcall, func_info.g, grad_result.call_nodes, grad_result.ret_nodes,true));
       MarkTransformed(grad_result);
     }
     MarkCallTransformed(call_info);
