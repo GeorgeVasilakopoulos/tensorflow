@@ -669,6 +669,8 @@ Status CallRewriter::TransformNode(const CallInfo& info,
         std::vector<NodeDef*>& ret_nodes, bool is_gradient_node = false) {
   CHECK_EQ(call->input_size(), f.args.size());
 
+  unsigned int next_return_node = is_gradient_node ? ret_nodes.size() : 0;  
+
   call_nodes.resize(f.args.size());
   for (unsigned int i = 0; i < f.args.size(); i++) {
       /* check if call node is already in place, if so, validate and skip */
@@ -743,12 +745,10 @@ Status CallRewriter::TransformNode(const CallInfo& info,
           *out->add_input() = ret_nodes[i]->name();
       }
   } else {
-      for (unsigned int i = 0; i < f.rets.size(); i++) {
-          ReplaceOutput(strings::StrCat(call->name(), ":", i), ret_nodes[i]->name());
+      for (unsigned int i = next_return_node; i < f.rets.size(); i++) {
+          ReplaceOutput(strings::StrCat(call->name(), ":", i - next_return_node), ret_nodes[i]->name());
+          if(i == next_return_node)ReplaceOutput(call->name(), ret_nodes[i]->name());
       }
-     if (f.rets.size() == 1) {
-      ReplaceOutput(call->name(), ret_nodes[0]->name());
-     }
   }
 
   // for each call create a control dependency to each return
@@ -845,6 +845,13 @@ void CallRewriter::Flush() {
         graph->mutable_node()->DeleteSubrange(last + 1,
                                               graph->node_size() - last - 1);
     }
+
+
+    // for(auto& p : output_map_){
+    //     printf("%s -> %s\n",p.first.c_str(),p.second.c_str());
+
+    // }
+
     if (!output_map_.empty()) {
       for (NodeDef& node : *graph->mutable_node()) {
         std::vector<TransformationResult> control_nodes;
