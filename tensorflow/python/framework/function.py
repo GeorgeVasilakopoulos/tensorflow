@@ -153,6 +153,7 @@ class Defun(object):
     self._func_name = kwargs.pop("func_name", None)
     self._grad_func = kwargs.pop("grad_func", None)
     self._python_grad_func = kwargs.pop("python_grad_func", None)
+    self._create_grad_func = kwargs.pop("create_grad_func", False)
     self._out_names = kwargs.pop("out_names", None)
     self._extra_kwargs = kwargs
 
@@ -197,6 +198,8 @@ class Defun(object):
           self._func_name,
           self._grad_func,
           self._python_grad_func,
+          self._create_grad_func,
+          is_gradient=False,
           out_names=self._out_names,
           **self._extra_kwargs)
 
@@ -320,6 +323,8 @@ class _DefinedFunction(object):
                func_name=None,
                grad_func=None,
                python_grad_func=None,
+               create_grad_func=False,
+               is_gradient=False,
                out_names=None,
                shape_func=None,
                capture_by_value=False,
@@ -361,6 +366,8 @@ class _DefinedFunction(object):
     self._func_name = func_name
     self._grad_func = grad_func
     self._python_grad_func = python_grad_func
+    self._create_grad_func = create_grad_func
+    self._is_gradient = is_gradient
     self._out_names = out_names
     self._shape_func = shape_func
     self._capture_by_value = capture_by_value
@@ -387,11 +394,30 @@ class _DefinedFunction(object):
     # is disabled the whole _definition is available and this is simply
     # another reference to _definition.signature
     self._op_def = None
-
+  
     assert isinstance(input_types, (list, tuple))
     self._arg_types = input_types
     self._arg_names = [argnames[i] if i < len(argnames) else ("arg%d" % i)
                        for i in range(len(input_types))]
+
+
+    self._args = list(zip(self._arg_names,self._arg_types))
+    if self._create_grad_func:
+      grad_func_name = self._func_name #+ "Grad"
+      out_names = self._out_names.copy()
+      for (argname, argtype) in self._args:
+        out_names.append("d" + argname)
+      # Todo: check if we need to copy all the args so that they don't get passed by reference
+      self._grad_func = _DefinedFunction(func=func,
+                                      argnames=argnames,
+                                      input_types=input_types,
+                                      func_name=grad_func_name,
+                                      grad_func=None,
+                                      python_grad_func=None,
+                                      create_grad_func=False,
+                                      is_gradient=True,
+                                      out_names=out_names,
+                                      **kwargs)
 
   @property
   def name(self):
@@ -471,7 +497,8 @@ class _DefinedFunction(object):
 
   def _create_definition_if_needed_impl(self):
     """This is not what you want, see _create_definition_if_needed."""
-    if self._definition is not None or self._c_func is not None:
+    if self._definition is not None or self._c_func is not None \
+      or (self._is_gradient and not ops.get_default_graph()._is_function(self._func_name)):
       return
 
     # Copy variable collections (by reference) from the parent graph such that
@@ -489,17 +516,24 @@ class _DefinedFunction(object):
         self._func,
         self._arg_names,
         self._arg_types,
+        self._out_names,
         self._func_name,
+        self._is_gradient,
         self._capture_by_value,
         self._caller_device,
         collections_ref=collections_ref,
         allowlisted_stateful_ops=self._allowlisted_stateful_ops,
-        capture_resource_var_by_value=self._capture_resource_var_by_value)
+        capture_resource_var_by_value=self._capture_resource_var_by_value,
+        functions=parent_graph._functions
+        )
 
     self._extra_inputs = temp_graph.extra_inputs
     # pylint: disable=protected-access
     self._sub_functions = temp_graph._functions
     # pylint: enable=protected-access
+
+    if self._is_gradient and self._func_name:
+      self._func_name += "Grad"
 
     # Extra kwargs are treated as attrs on the function def.
     if self._func_name:
@@ -1001,7 +1035,9 @@ class _FuncGraph(ops.Graph):
 def func_graph_from_py_func(func,
                             arg_names,
                             arg_types,
+                            out_names,
                             name=None,
+                            is_gradient=False,
                             capture_by_value=False,
                             device=None,
                             colocation_stack=None,
@@ -1009,7 +1045,8 @@ def func_graph_from_py_func(func,
                             collections_ref=None,
                             arg_shapes=None,
                             allowlisted_stateful_ops=None,
-                            capture_resource_var_by_value=True):
+                            capture_resource_var_by_value=True,
+                            functions=None):
   """Returns a _FuncGraph generated from `func`.
 
   Args:
@@ -1062,7 +1099,25 @@ def func_graph_from_py_func(func,
       func_graph.inputs.append(argholder)
     # Call func and gather the output tensors.
     with vs.variable_scope("", custom_getter=func_graph.getvar):
-      outputs = func(*func_graph.inputs)
+      gradient_out_types = []
+      if is_gradient:
+        name = name + "Grad"
+        outputs = [func(*func_graph.inputs)]
+        dinputs = []
+        for (out, name) in list(zip(outputs, out_names)):
+          argholder = array_ops.placeholder(out.op.node_def.attr["T"].type, name="d"+name)
+          dinputs.append(argholder)
+          gradient_out_types.append(out.op.node_def.attr["T"].type)
+        for argtype in arg_types:
+          gradient_out_types.append(argtype)
+        from tensorflow.python.ops import gradients_impl
+        doutputs = gradients_impl.gradients(outputs, func_graph.inputs, dinputs, functions = functions)
+        if not isinstance(doutputs, list):
+          doutputs = [doutputs]
+        outputs.extend(doutputs)
+        func_graph.inputs.extend(dinputs)
+      else:
+        outputs = func(*func_graph.inputs)
 
     # There is no way of distinguishing between a function not returning
     # anything and a function returning None in Python.
@@ -1078,10 +1133,24 @@ def func_graph_from_py_func(func,
       # If func only returned one value, make it a tuple.
       if not isinstance(outputs, (list, tuple)):
         outputs = (outputs,)
-      if any(_ is None for _ in outputs):
-        raise ValueError(f"Function {name} can not return None.")
+      # if any(_ is None for _ in outputs):
+      #   raise ValueError(f"Function {name} can not return None.")
     # Ensures each output is a Tensor in the function graph.
-    outputs = [ops.convert_to_tensor(t) for t in outputs]
+    if is_gradient:
+      tmp_out = []
+      for out, out_type in zip(outputs, gradient_out_types):
+        if out is not None:
+          tmp_out.append(ops.convert_to_tensor(out))
+        else:
+            if out_type.is_bool:
+              tmp_out.append(ops.convert_to_tensor(False))
+            elif out_type.is_floating:
+              tmp_out.append(ops.convert_to_tensor(0.0))
+            else:
+              tmp_out.append(ops.convert_to_tensor(0))
+      outputs = tmp_out
+    else:
+      outputs = [ops.convert_to_tensor(t) for t in outputs]
     outputs = [func_graph.capture(t) if t.graph is not func_graph else t
                for t in outputs]
     func_graph.outputs = outputs

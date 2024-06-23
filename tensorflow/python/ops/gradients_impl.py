@@ -61,7 +61,8 @@ def gradients(ys,
               gate_gradients=False,
               aggregation_method=None,
               stop_gradients=None,
-              unconnected_gradients=UnconnectedGradients.NONE):
+              unconnected_gradients=UnconnectedGradients.NONE,
+              functions = None):
   """Constructs symbolic derivatives of sum of `ys` w.r.t. x in `xs`.
 
   `ys` and `xs` are each a `Tensor` or a list of tensors.  `grad_ys`
@@ -181,7 +182,7 @@ def gradients(ys,
     return gradients_util._GradientsHelper(
         ys, xs, grad_ys, name, colocate_gradients_with_ops,
         gate_gradients, aggregation_method, stop_gradients,
-        unconnected_gradients)
+        unconnected_gradients, functions)
   # pylint: enable=protected-access
 
 

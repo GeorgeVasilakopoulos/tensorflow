@@ -2544,12 +2544,12 @@ class Graph(pywrap_tf_session.PyGraph):
     # pylint: disable=protected-access
     with self._c_graph.get() as c_graph:
       with function._c_func.get() as func:
-        if getattr(function, "_grad_func", None):
-          # For deprecated _DefinedFunction.
-          with function._grad_func._c_func.get() as gradient:
-            pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, gradient)
-        else:
-          pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, None)
+        # if getattr(function, "_grad_func", None):
+        #   # For deprecated _DefinedFunction.
+        #   with function._grad_func._c_func.get() as gradient:
+        #     pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, gradient)
+        # else:
+        pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, None)
     # pylint: enable=protected-access
 
     self._functions[compat.as_str(name)] = function

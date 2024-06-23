@@ -512,6 +512,7 @@ def _GradientsHelper(ys,
                      aggregation_method=None,
                      stop_gradients=None,
                      unconnected_gradients=UnconnectedGradients.NONE,
+                     functions = None,
                      src_graph=None):
   """Implementation of gradients()."""
   if context.executing_eagerly():
@@ -536,7 +537,7 @@ def _GradientsHelper(ys,
     flat_grads = _GradientsHelper(flat_ys, flat_xs, flat_grad_ys, name,
                                   colocate_gradients_with_ops, gate_gradients,
                                   aggregation_method, stop_gradients,
-                                  unconnected_gradients, src_graph)
+                                  unconnected_gradients, src_graph = src_graph)
     return composite_tensor_gradient.replace_flat_tensors_for_gradients(
         xs, flat_grads)
 
@@ -637,6 +638,9 @@ def _GradientsHelper(ys,
         is_partitioned_call = _IsPartitionedCall(op)
         # pylint: disable=protected-access
         is_func_call = src_graph._is_function(op.type) or is_partitioned_call
+        if not is_func_call and functions is not None:
+          is_func_call = op.type in functions
+        
         # pylint: enable=protected-access
         has_out_grads = any(
             isinstance(g, tensor_lib.Tensor) or g for g in out_grads
@@ -665,6 +669,8 @@ def _GradientsHelper(ys,
                       break
               else:
                 func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
+                if func_call is None and functions is not None:
+                  func_call = functions.get(op.type,None)
               # Note that __defun is not set if the graph is
               # imported. If it's set, we prefer to access the original
               # defun.
