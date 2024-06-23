@@ -839,7 +839,7 @@ Status GraphConstructor::InitFromEdges() {
         }
       }
       if (has_loop_back_edge) {
-        pending_count = num_control_edges + 1;
+        pending_count = std::min(num_control_edges + 1, node_def.input_size());
       }
     } else if (IsReturningNode(node_def)) {
       int num_control_edges = 0;
@@ -849,7 +849,7 @@ Status GraphConstructor::InitFromEdges() {
           num_control_edges++;
         }
       }
-      pending_count = num_control_edges + 1;
+      pending_count = std::min(num_control_edges + 1, node_def.input_size());
     } 
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
