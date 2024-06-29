@@ -1102,7 +1102,9 @@ def func_graph_from_py_func(func,
       gradient_out_types = []
       if is_gradient:
         name = name + "Grad"
-        outputs = [func(*func_graph.inputs)]
+        outputs = func(*func_graph.inputs)
+        if not isinstance(outputs,list):
+          outputs = [outputs]
         dinputs = []
         for (out, name) in list(zip(outputs, out_names)):
           argholder = array_ops.placeholder(out.op.node_def.attr["T"].type, name="d"+name)
