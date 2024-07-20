@@ -96,12 +96,16 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
 
   pending_ids_.resize(gview_.num_nodes());
 
+  std::unordered_map<string,int> input_count;
+
   // Preprocess every node in the graph to create an instance of op
   // kernel for each node.
   requires_control_flow_ = false;
   for (const Node* n : graph.nodes()) {
     if (IsSink(n)) continue;
     if (IsSwitch(n) || IsMerge(n) || IsEnter(n) || IsExit(n)) {
+      requires_control_flow_ = true;
+    } else if(IsCall(n) || IsReturn(n)){
       requires_control_flow_ = true;
     } else if (IsRecv(n)) {
       // A Recv node from a different device may produce dead tensors from
@@ -186,6 +190,23 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
     } else {
       item->is_constant_enter = false;
     }
+    
+    item->is_call = IsCall(n);
+    
+    if(item->is_call){
+      string frame_name;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &frame_name));
+      FrameInfo* frame_info = frame_info_[frame_name].get();
+      frame_info->parallel_iterations = 1;
+      if (call_frame_info_.size() <= id) {
+        call_frame_info_.resize(id + 1);
+      }
+      call_frame_info_[id] = frame_info;
+    }
+
+
+    item->is_return = IsReturn(n);
+    item->is_call_or_return = (IsCall(n) || IsReturn(n));
     item->is_exit = IsExit(n);
     item->is_control_trigger = IsControlTrigger(n);
     item->is_source = IsSource(n);
@@ -217,6 +238,19 @@ Status ImmutableExecutorState::Initialize(const Graph& graph) {
       string enter_name;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &enter_name));
       EnsureFrameInfo(enter_name)->input_count++;
+      item->frame_name = enter_name;
+      item->dyn_frame_name = enter_name;
+    }
+    if(item->is_call_or_return){
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "frame_name", &item->frame_name));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "call_id", &item->call_id));
+      item->dyn_frame_name = strings::StrCat(item->call_id);
+    }
+    if (item->is_call) {
+      input_count[item->dyn_frame_name]++;
+      // The following assumes that all the calls of same function have the same number of inputs
+      // which is of course apparent for a well-formed graph (produced by the transformation)
+      EnsureFrameInfo(item->frame_name)->input_count = input_count[item->dyn_frame_name];
     }
 
     // Record information about whether each output of the op is used.
@@ -303,6 +337,7 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     }
   }
 
+  std::unordered_map<int, int> call_id_to_call_node_id;
   while (!ready.empty()) {
     Node* curr_node = ready.front();
     int curr_id = curr_node->id();
@@ -323,6 +358,31 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
       }
       frame_name = cf_info->frame_names[parent->id()];
       parent = parent_nodes[parent->id()];
+    } else if (IsCall(curr_node)) {
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(curr_node->attrs(), "frame_name", &frame_name));
+
+      int call_id;
+      TF_RETURN_IF_ERROR(
+                GetNodeAttr(curr_node->attrs(),"call_id", &call_id));
+      // we assume that call_id is unique and we don't need to concat with frame_name
+      // to make it unique.
+      call_id_to_call_node_id.emplace(call_id, curr_id);
+      parent = curr_node;
+    } else if (IsReturn(curr_node)) {
+      int call_id;
+      TF_RETURN_IF_ERROR(
+          GetNodeAttr(curr_node->attrs(), "call_id", &call_id));
+
+      auto it = call_id_to_call_node_id.find(call_id);
+      if (it != call_id_to_call_node_id.end()) {
+        int call_node_id = it->second;
+        parent = parent_nodes[call_node_id];
+        frame_name = cf_info->frame_names[call_node_id];
+      } else {
+        ready.push_back(curr_node);
+        continue;
+      }
     } else {
       parent = parent_nodes[curr_id];
       frame_name = cf_info->frame_names[curr_id];
@@ -331,6 +391,7 @@ Status ImmutableExecutorState::BuildControlFlowInfo(const Graph* g,
     for (const Edge* out_edge : curr_node->out_edges()) {
       Node* out = out_edge->dst();
       if (IsSink(out)) continue;
+      if (IsReturn(out) && out_edge->IsControlEdge()) continue;
       const int out_id = out->id();
 
       // Add to ready queue if not visited.

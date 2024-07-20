@@ -1722,7 +1722,7 @@ Status DirectSession::CreateGraphs(
 
   for (auto& partition : partitions) {
     std::unique_ptr<Graph> device_graph(
-        new Graph(client_graph->flib_def.get()));
+        new Graph(OpRegistry::Global()));
     device_graph->SetConstructionContext(ConstructionContext::kDirectSession);
     GraphConstructorOptions device_opts;
     // There are internal operations (e.g., send/recv) that we now allow.

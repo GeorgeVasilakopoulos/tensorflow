@@ -608,7 +608,7 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
     // Skip original `_Arg` and `_Retval` nodes. If node was converted to some
     // other type (e.g. inputs converted to placeholders), we need to check that
     // it's not registered as function input or output node.
-    if (IsArg(func_node) || IsRetval(func_node) ||
+    if (IsArg(func_node) || IsRetval(func_node) || IsReturn(func_node) ||
         helper.IsInputNode(func_node) || helper.IsOutputNode(func_node))
       continue;
 

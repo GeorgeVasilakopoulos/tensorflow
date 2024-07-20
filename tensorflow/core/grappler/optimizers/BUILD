@@ -446,6 +446,47 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "function_transformation",
+    srcs = ["function_transformation.cc"],
+    hdrs = [
+        "function_transformation.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_optimizer",
+        ":function_optimizer",
+        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/utils:functions",
+    ],
+)
+
+tf_cc_test(
+    name = "function_transformation_test",
+    srcs = ["function_transformation_test.cc"],
+    shard_count = 5,
+    deps = [
+        ":function_transformation",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+cc_library(
     name = "model_pruner",
     srcs = ["model_pruner.cc"],
     hdrs = [
@@ -642,6 +683,7 @@ cc_library(
         ":dependency_optimizer",
         ":function_optimizer",
         ":generic_layout_optimizer",
+        ":function_transformation",
         ":graph_optimizer",
         ":implementation_selector",
         ":loop_optimizer",

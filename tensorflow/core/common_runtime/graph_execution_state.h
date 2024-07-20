@@ -58,7 +58,7 @@ struct ClientGraph {
                        DataTypeVector feed_types, DataTypeVector fetch_types,
                        int64_t collective_graph_key)
       : flib_def(std::move(flib)),
-        graph(flib_def.get()),
+        graph(*flib_def),
         feed_types(std::move(feed_types)),
         fetch_types(std::move(fetch_types)),
         collective_graph_key(collective_graph_key) {}

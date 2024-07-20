@@ -67,10 +67,14 @@ struct NodeItem {
   bool is_constant_enter : 1;   // True iff IsEnter(node) and
                                 // node->GetAttr("is_constant") == true.
   bool is_exit : 1;             // True iff IsExit(node)
+  bool is_call : 1;             // True iff IsCall(node)
+  bool is_return : 1;           // True iff IsReturn(node)
   bool is_control_trigger : 1;  // True iff IsControlTrigger(node)
   bool is_source : 1;           // True iff IsSource(node)
   // True iff IsEnter(node) || IsExit(node) || IsNextIteration(node)
   bool is_enter_exit_or_next_iter : 1;
+   // True iff IsCall(node) || IsReturn(node)
+  bool is_call_or_return : 1;
   bool is_transfer_node : 1;      // True iff IsTransferNode(node)
   bool is_initialization_op : 1;  // True iff IsInitializationOp(node)
   bool is_recv_or_switch : 1;     // True iff IsRecv(node) || IsSwitch(node)
@@ -106,6 +110,12 @@ struct NodeItem {
 
   // Number of output control edges.
   int32 num_output_control_edges;
+
+  string frame_name; // cache the attribute if is_enter | is-exit | is_call | is_return
+  string dyn_frame_name; // cache the attribute if is_enter | is-exit | is_call | is_return
+
+  int call_id = -1;
+
 
   // If non-null, contains an array of num_outputs bools, where the ith bool
   // is true if and only if the ith output is consumed by another node.

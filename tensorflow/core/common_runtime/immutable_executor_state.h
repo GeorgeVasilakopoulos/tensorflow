@@ -99,6 +99,13 @@ class ImmutableExecutorState {
     return *enter_frame_info_[node_item.node_id];
   }
 
+  const FrameInfo& get_call_frame_info(const NodeItem& node_item) const {
+    DCHECK(node_item.is_call);
+    return *call_frame_info_[node_item.node_id];
+  }
+
+  
+
   bool requires_control_flow_support() const { return requires_control_flow_; }
 
   // Copies the pending counts for nodes in this graph to the given array.
@@ -147,6 +154,7 @@ class ImmutableExecutorState {
   // If the graph contains any "Enter" or "RefEnter" nodes, this vector maps
   // dense node IDs to the corresponding FrameInfo.
   std::vector<FrameInfo*> enter_frame_info_;
+  std::vector<FrameInfo*> call_frame_info_; 
 
   // If `requires_control_flow_` is false, this points to an array of initial
   // pending counts for the nodes in the graph, indexed by node ID.

@@ -7,7 +7,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
+distributed under the License is distributed on a:n "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
@@ -42,13 +42,13 @@ PropagatorState::PropagatorState(const ImmutableExecutorState& immutable_state,
       0, new PropagatorState::IterationState(0, root_frame_->pending_counts,
                                              root_frame_->total_input_tensors));
 
-  outstanding_frames_.emplace(root_frame_->frame_id, root_frame_);
+  // outstanding_frames_.emplace(root_frame_->frame_id, root_frame_);
 }
 
 PropagatorState::~PropagatorState() {
-  for (auto name_frame : outstanding_frames_) {
-    delete name_frame.second;
-  }
+  // for (auto name_frame : outstanding_frames_) {
+  //   delete name_frame.second;
+  // }
 }
 
 void PropagatorState::ActivateRoots(gtl::ArraySlice<const NodeItem*> roots,
@@ -89,7 +89,21 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
   FrameState* output_frame = input_frame;
   IterationState* output_iter = input_iter;
 
-  if (!item->is_enter_exit_or_next_iter) {
+  // if (!item->is_enter_exit_or_next_iter) {
+    // if (vlog_) {
+    //   VLOG(2) << "Propagate Outputs: " << node->name();
+    //   VLOG(2) << "Frame: " << input_frame->frame_name;
+    // }
+    //  printf("Propagate Outputs: %s,  am i alive? %d\n", node->name().c_str(), !is_dead);
+    //  printf("Frame: %s\n", input_frame->frame_name.c_str());
+
+    string output(tagged_node.node_item->kernel->name_view());
+
+    // printf("Propagate Outputs: %s,  am i alive? %d\n",output.c_str(), !is_dead);
+    // printf("Frame: %s\n", input_frame->frame_name.c_str());
+
+
+  if (!item->is_enter_exit_or_next_iter && !item->is_call_or_return) {
     // Fast path for node types that don't need special handling.
     // This is the case for most nodes.
     DCHECK_EQ(input_frame, output_frame);
@@ -131,6 +145,37 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
           /*decrement_activation=*/0);
       is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
     }
+  } else if (item->is_call) { 
+    //    if (is_dead) {
+    //      // Stop the deadness propagation.
+    //      output_frame = nullptr;
+    //    } else {
+    FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
+    // printf("Inside Call: %s. Input frame id: %d, Output frame id %d\n", output.c_str(),input_frame->frame_id,output_frame->frame_id);
+    output_iter = output_frame->GetIteration(0);
+    {
+      mutex_lock l(output_frame->mu);
+      int activated = output_frame->ActivateNodesLocked(
+            item, is_dead, output_iter, outputs, ready);
+      output_frame->AdjustOutstandingOpsLocked(output_iter, activated, ready);
+      output_frame->num_pending_inputs--;
+    }
+    is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
+  } else if (item->is_return) {
+    //    if (is_dead) {
+    //      // Stop the deadness propagation.
+    //      output_frame = nullptr;
+    //    } else {
+    output_frame = input_frame->parent_frame;
+    output_iter = input_frame->parent_iter;
+    // printf("Inside Return: %s. Input frame id: %d, Output frame id %d\n", output.c_str(),input_frame->frame_id,output_frame->frame_id);
+    {
+      mutex_lock l(output_frame->mu);
+      int activated = output_frame->ActivateNodesLocked(
+            item, is_dead, output_iter, outputs, ready);
+      output_frame->AdjustOutstandingOpsLocked(output_iter, activated, ready);
+    }
+    is_frame_done = input_frame->DecrementOutstandingOps(input_iter, ready);
   } else {
     DCHECK(item->is_next_iteration);
     if (is_dead) {
@@ -244,11 +289,11 @@ void PropagatorState::DumpIterationState(const FrameState* frame,
 void PropagatorState::DumpState() {
   mutex_lock l(mu_);
   LOG(WARNING) << "Dumping state";
-  for (auto& frame : outstanding_frames_) {
-    LOG(WARNING) << frame.first;
-    FrameState* frame_state = frame.second;
-    frame_state->DumpIterationState(this);
-  }
+  // for (auto& frame : outstanding_frames_) {
+  //   LOG(WARNING) << frame.first;
+  //   FrameState* frame_state = frame.second;
+  //   frame_state->DumpIterationState(this);
+  // }
 }
 
 void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
@@ -257,16 +302,16 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
                                              FrameState** child) {
   // Get the child frame name.
   const ImmutableExecutorState::FrameInfo& frame_info =
-      immutable_state_.get_enter_frame_info(node_item);
+      node_item.is_enter ? immutable_state_.get_enter_frame_info(node_item) : immutable_state_.get_call_frame_info(node_item);
 
   const uint64 child_id = Hash64Combine(
       frame->frame_id,
-      Hash64Combine(iter_state->iter_num, Hash64(frame_info.name)));
+      Hash64Combine(iter_state->iter_num, Hash64(frame_info.name + ":" + std::to_string(node_item.call_id))));
 
   {
-    tf_shared_lock executor_lock(mu_);
-    auto it = outstanding_frames_.find(child_id);
-    if (it != outstanding_frames_.end()) {
+    tf_shared_lock executor_lock(frame->mu);
+    auto it = frame->outstanding_child_frames_.find(child_id);
+    if (it != frame->outstanding_child_frames_.end()) {
       *child = it->second;
       return;
     }
@@ -285,6 +330,7 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
   temp->frame_id = child_id;
   temp->parent_frame = frame;
   temp->parent_iter = iter_state;
+  temp->call_id = node_item.call_id;
   temp->InitializeFrameInfo(frame_info);
 
   // Initialize iteration 0.
@@ -295,14 +341,13 @@ void PropagatorState::FindOrCreateChildFrame(FrameState* frame,
   }
 
   {
-    mutex_lock executor_lock(mu_);
-    auto it = outstanding_frames_.find(child_id);
-    if (it != outstanding_frames_.end()) {
+    mutex_lock executor_lock(frame->mu);
+    auto it = frame->outstanding_child_frames_.find(child_id);
+    if (it != frame->outstanding_child_frames_.end()) {
       *child = it->second;
     } else {
-      mutex_lock frame_lock(frame->mu);
       iter_state->outstanding_frame_count++;
-      outstanding_frames_[child_id] = temp;
+      frame->outstanding_child_frames_[child_id] = temp;
       *child = temp;
       temp = nullptr;
     }
@@ -382,8 +427,10 @@ void PropagatorState::DeleteFrame(FrameState* frame, TaggedNodeSeq* ready) {
   // Delete the frame.
   if (vlog_) VLOG(2) << "Delete frame " << frame->frame_id;
   {
-    mutex_lock executor_lock(mu_);
-    outstanding_frames_.erase(frame->frame_id);
+    if (parent_frame != nullptr) {
+      mutex_lock parent_frame_lock(parent_frame->mu);
+      parent_frame->outstanding_child_frames_.erase(frame->frame_id);
+    }
   }
   delete frame;
 }
@@ -551,6 +598,12 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
         dst_ready = (adjust_result.pending_count == 1) && dst_dead;
       }
     } else {
+      if (dst_item->is_return) {
+        // In case of "Return" dst_node,
+        // we compare node's frame attr with current frame name
+        // if they are different, ignore this op
+        if (dst_item->call_id != call_id) continue;
+      }
       // Handle all other (non-merge) nodes.
 
       // We need to set the input of the op before adjusting activation.
@@ -572,6 +625,23 @@ int PropagatorState::FrameState::ActivateNodesSlowPathInternal(
                                                      increment_dead);
       dst_dead = adjust_result.dead_count > 0;
       dst_ready = !(adjust_result.pending_count > 0);
+
+      if (dst_item->is_return && increment_dead) {
+        // The only dead input a Return op will ever may get
+        // is the control input propagated to it from a corresponding
+        // dead Call op in case of untaken branch. So at this point
+        // we are certain that Return op will never receive another input.
+        // Therefore, we force it to be added in queue for the sake of
+        // deadness propagation and we adjust it for activation once more,
+        // so that it no longer waits for another (never coming) input.
+        const PendingCounts::AdjustResult adjust_result = 
+            atomic ? iter_state->adjust_for_activation_atomic(dst_pending_id,
+                                                            increment_dead)
+                   : iter_state->adjust_for_activation(dst_pending_id,
+                                                        increment_dead);
+        dst_dead = adjust_result.dead_count > 0;
+        dst_ready = !(adjust_result.pending_count > 0);
+      }
     }
 
     maybe_add_to_ready(dst_id, dst_item, dst_ready, dst_dead);

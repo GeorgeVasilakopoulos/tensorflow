@@ -2506,6 +2506,18 @@ class Graph(pywrap_tf_session.PyGraph):
         else:
           self._add_function(f)
 
+  def _declare_function_from_op_def(self, op_def) -> None:
+
+    function_def = function_pb2.FunctionDef()
+    function_def.signature.CopyFrom(op_def)
+
+    with self._c_graph.get() as c_graph:
+      try:
+        pywrap_tf_session.TF_GraphAddFunctionDef(c_graph,function_def.SerializeToString())
+      except errors.InvalidArgumentError:
+        pass
+
+
   def _add_function(self, function) -> None:
     """Adds a function to the graph.
 
@@ -2532,12 +2544,12 @@ class Graph(pywrap_tf_session.PyGraph):
     # pylint: disable=protected-access
     with self._c_graph.get() as c_graph:
       with function._c_func.get() as func:
-        if getattr(function, "_grad_func", None):
-          # For deprecated _DefinedFunction.
-          with function._grad_func._c_func.get() as gradient:
-            pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, gradient)
-        else:
-          pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, None)
+        # if getattr(function, "_grad_func", None):
+        #   # For deprecated _DefinedFunction.
+        #   with function._grad_func._c_func.get() as gradient:
+        #     pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, gradient)
+        # else:
+        pywrap_tf_session.TF_GraphCopyFunction(c_graph, func, None)
     # pylint: enable=protected-access
 
     self._functions[compat.as_str(name)] = function
@@ -2676,6 +2688,11 @@ class Graph(pywrap_tf_session.PyGraph):
 
     input_ops = set(t.op for t in inputs)
     control_inputs = self._control_dependencies_for_inputs(input_ops)
+    
+    if op_def:
+      self._declare_function_from_op_def(op_def)
+    
+    
     # _create_op_helper mutates the new Operation. `_mutation_lock` ensures a
     # Session.run call cannot occur between creating and mutating the op.
     with self._mutation_lock():

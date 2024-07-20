@@ -261,6 +261,8 @@ class PropagatorState {
     // frame_name.
     uint64 frame_id;
 
+    int call_id = -1;
+
     // The iteration state of its parent frame when this frame is created.
     // nullptr if there is no parent frame. The frame_name/parent_iter pair
     // uniquely identifies this FrameState.
@@ -280,6 +282,14 @@ class PropagatorState {
 
     // The number of outstanding iterations.
     int num_outstanding_iterations TF_GUARDED_BY(mu) = 1;
+
+    // Mapping from frame ID to outstanding frames. A new frame is created
+    // at some iteration of an active frame. So the unique key for the new
+    // child frame is a hash composed of the ID of the parent frame, the iteration
+    // number at which the parent frame is creating the new frame, and the
+    // name of the new frame from nodedef.
+    absl::flat_hash_map<uint64, FrameState*> outstanding_child_frames_
+        TF_GUARDED_BY(mu);
 
    private:
     // The active iteration states of this frame.
@@ -537,14 +547,6 @@ class PropagatorState {
 
   // The root frame in which the execution of this step is started.
   FrameState* root_frame_;
-
-  // Mapping from frame ID to outstanding frames. A new frame is created
-  // at some iteration of an active frame. So the unique key for the new
-  // child frame is a hash composed of the ID of the parent frame, the iteration
-  // number at which the parent frame is creating the new frame, and the
-  // name of the new frame from nodedef.
-  absl::flat_hash_map<uint64, FrameState*> outstanding_frames_
-      TF_GUARDED_BY(mu_);
 
   PropagatorState(const PropagatorState&) = delete;
   void operator=(const PropagatorState&) = delete;

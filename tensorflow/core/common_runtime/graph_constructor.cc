@@ -63,6 +63,15 @@ namespace {
 // can skip expensive duplicates check in 'AddControlEdge'.
 static constexpr const bool kDoNotCheckDuplicates = true;
 
+inline bool IsCall(const NodeDef& node_def){
+  return node_def.op() == "Call" || node_def.op() == "RefCall";
+}
+
+inline bool IsReturn(const NodeDef& node_def){
+  return node_def.op() == "Return" || node_def.op() == "RefReturn";
+}
+
+
 inline bool IsMerge(const NodeDef& node_def) {
   return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
          node_def.op() == "_XlaMerge";
@@ -201,6 +210,7 @@ class GraphConstructor {
     TF_RETURN_IF_ERROR(EnsureNoNameCollisions());
     TF_RETURN_IF_ERROR(ValidateInputMapAndControlDependencies());
     TF_RETURN_IF_ERROR(BuildNodeIndex());
+    TF_RETURN_IF_ERROR(PopulateFunctionReturningNodes());
     TF_RETURN_IF_ERROR(InitFromEdges());
 
     // NOTE: Convert() invokes `consume_node_def()` on each node in the input
@@ -228,6 +238,7 @@ class GraphConstructor {
   Status PopulateReturnTensors();
   Status PopulateReturnNodes();
   Status PopulateMissingUnusedInputMapKeys();
+  Status PopulateFunctionReturningNodes();
 
   FunctionDefLibraryStackTraces CreateStackTracesForFunctionDefLibrary(
       const FunctionDefLibrary& library) const;
@@ -261,6 +272,10 @@ class GraphConstructor {
   void AddPrefixToNodeDef(const std::vector<bool>& input_already_exists,
                           NodeDef* node_def);
 
+  bool IsReturningNode(const NodeDef& node_def){
+    return (function_returning_nodes_.find(node_def.name()) != function_returning_nodes_.end());
+  }
+
   // Modifies `node_def` if its name isn't unique, or if any of its inputs'
   // names have been uniquified. This must be called in topological order on all
   // nodes.
@@ -286,7 +301,7 @@ class GraphConstructor {
 
   // Decrement pending count for users of `processed` and add the ones that now
   // have all of their pending inputs satisfied to `ready_`.
-  void UpdatePendingCountAndReady(int processed, bool is_next_iteration);
+  void UpdatePendingCountAndReady(int processed, bool is_next_iteration, bool is_function_call);
 
   // Subclasses override the following virtual methods to provide efficient
   // access to the original protocol buffer-based graph.
@@ -405,6 +420,7 @@ class GraphConstructor {
     int dst_index;
   };
   std::vector<EdgeInfo> back_edges_;
+  std::unordered_set<string> function_returning_nodes_;
 
   GraphConstructor(const GraphConstructor&) = delete;
   void operator=(const GraphConstructor&) = delete;
@@ -560,20 +576,21 @@ Status MaybeAppendVersionWarning(const VersionDef* versions,
 }
 
 void GraphConstructor::UpdatePendingCountAndReady(int processed,
-                                                  bool is_next_iteration) {
+                                                  bool is_next_iteration, bool is_function_call) {
   for (size_t i = 0; i < outputs_[processed].size(); ++i) {
     const int output = outputs_[processed][i];
     // We didn't consider NextIteration->Merge edges when computing
     // pending_counts_ so we should not have to consider it here either.
     bool is_next_iteration_to_merge_edge =
         is_next_iteration && merge_node_indices_.count(output) == 1;
-    if (!is_next_iteration_to_merge_edge) {
-      int* current_pending_count = &pending_count_[output];
-      CHECK_GT(*current_pending_count, 0);
-      (*current_pending_count)--;
-      if (*current_pending_count == 0) {
-        ready_.insert(output);
-      }
+    if (is_next_iteration_to_merge_edge)continue;
+    int* current_pending_count = &pending_count_[output];
+    if (*current_pending_count == 0 && is_function_call) continue;
+    if (*current_pending_count == 0 && merge_node_indices_.count(output) == 1) continue;
+    // CHECK_GT(*current_pending_count, 0);
+    (*current_pending_count)--;
+    if (*current_pending_count == 0) {
+      ready_.insert(output);
     }
   }
 }
@@ -644,6 +661,44 @@ Status GraphConstructor::EnsureNoNameCollisions() {
     }
   }
   return absl::OkStatus();
+}
+
+Status GraphConstructor::PopulateFunctionReturningNodes() {
+  std::unordered_map<string, std::set<int>> returning_nodes;
+  for (int n = 0; n < node_def_count(); ++n) {
+    const NodeDef& node_def = get_node_def(n);
+    if (IsReturn(node_def)){
+      // Nodes that send their output to "Return" nodes are
+      // function Returning Nodes and in case of recursive functions
+      // those nodes are part of graph cycles.
+      for (const auto& input_name : node_def.input()) {
+        // In order to detect the recursion cycles we depend on
+        // the fact that a recursive function's returning node,
+        // will be sending outputs to at least 2 "Return" nodes
+        // with different "call_id" attributes (same "call_id"
+        // attrs would mean that they belong in the same function call
+        // but they correspond to different function outputs)
+        if (!absl::StartsWith(input_name, "^")) {
+          string prevNode = input_name;
+          size_t pos = input_name.find(":");
+          if (pos != std::string::npos)
+            prevNode = input_name.substr(0, pos);
+
+
+          int call_id;
+          TF_CHECK_OK(GetNodeAttr(AttrSlice(node_def), "call_id", &call_id));
+          returning_nodes[prevNode].emplace(call_id);
+        }
+      }
+    }
+  }
+  for (auto& retnode : returning_nodes) {
+    if (retnode.second.size() >  1) {
+      // Detected Cycle
+      function_returning_nodes_.insert(retnode.first);
+    }
+  }
+  return OkStatus();
 }
 
 Status GraphConstructor::ValidateInputMapAndControlDependencies() {
@@ -729,15 +784,42 @@ Status GraphConstructor::InitFromEdges() {
     }
   }
 
+  gtl::FlatSet<string> call_nodes;
+  gtl::FlatSet<string> merge_return_nodes;
+  for (int n = 0; n < node_def_count(); ++n) {
+    const NodeDef& node_def = get_node_def(n);
+    if (IsCall(node_def)) {
+      call_nodes.insert(node_def.name());
+    }
+    if (!IsMerge(node_def) && IsReturningNode(node_def)){
+      for (const auto& input_name : node_def.input()) {
+        if (!absl::StartsWith(input_name, "^")) {
+          string prevNode = input_name;
+          size_t pos = input_name.find(":");
+          
+          if (pos != std::string::npos)
+            prevNode = input_name.substr(0, pos);
+          
+          merge_return_nodes.insert(prevNode);
+        }
+      }  
+    }
+  }
+
+
+
+
   // Parse the inputs for each node.
   for (int n = 0; n < num_nodes; ++n) {
     const NodeDef& node_def = get_node_def(n);
     int pending_count = node_def.input_size();
-    if (IsMerge(node_def)) {
-      // Cycles in the graph are only allowed for while loops. A while loop is
-      // identified by an edge from a NextIteration node to a Merge node. For
-      // such Merge nodes, only wait for one non-control input before
-      // considering the node ready to process in Convert().
+    if (IsMerge(node_def) && !IsReturningNode(node_def)) {
+      // Cycles in the graph are only allowed for while loops and recursion.
+      // A while loop is identified by an edge from a NextIteration node to a Merge node.
+      // A recursion is identified by an edge from a Call Node to a Merge node
+      // In recursion, function returning nodes also participate in a cycle
+      // For such Merge nodes, and for function returning nodes only wait for
+      // one non-control input before considering the node ready to process in Convert().
       int32_t num_control_edges = 0;
       bool has_loop_back_edge = false;
       for (int i = 0; i < node_def.input_size(); ++i) {
@@ -747,15 +829,28 @@ Status GraphConstructor::InitFromEdges() {
         } else {
           TensorId id(ParseTensorName(input_name));
           if (next_iteration_nodes.find(string(id.first)) !=
-              next_iteration_nodes.end()) {
+              next_iteration_nodes.end()||
+              call_nodes.find(string(id.first)) !=
+              call_nodes.end()||
+              merge_return_nodes.find(node_def.name()) != 
+              merge_return_nodes.end()) {
             has_loop_back_edge = true;
           }
         }
       }
       if (has_loop_back_edge) {
-        pending_count = num_control_edges + 1;
+        pending_count = std::min(num_control_edges + 1, node_def.input_size());
       }
-    }
+    } else if (IsReturningNode(node_def)) {
+      int num_control_edges = 0;
+      for (int i = 0; i < node_def.input_size(); ++i) {
+        StringPiece input_name(node_def.input(i));
+        if (absl::StartsWith(input_name, "^")) {
+          num_control_edges++;
+        }
+      }
+      pending_count = std::min(num_control_edges + 1, node_def.input_size());
+    } 
     for (int i = 0; i < node_def.input_size(); ++i) {
       StringPiece input_name = node_def.input(i);
       TensorId id(ParseTensorName(input_name));
@@ -1218,7 +1313,7 @@ Status GraphConstructor::Convert() {
         TF_RETURN_IF_ERROR(IsNodeFullyMapped(node_def, &is_node_mapped));
         if (is_node_mapped) {
           // Skip this node after updating pending_count_ for outputs
-          UpdatePendingCountAndReady(o, IsNextIteration(node_def));
+          UpdatePendingCountAndReady(o, IsNextIteration(node_def), IsCall(node_def));
           continue;
         }
       }
@@ -1277,10 +1372,10 @@ Status GraphConstructor::Convert() {
       inputs.emplace_back(string(tensor_id.node()), src_node, src_index);
     }
 
-    if (has_data_back_edge && !IsMerge(node_def)) {
+    if (has_data_back_edge && !IsMerge(node_def) && !IsReturningNode(node_def)) {
       return errors::InvalidArgument(
           "Node '", node_def.name(),
-          "' had a back edge, but only Merge nodes can have back edges.");
+          "' had a back edge, but only Merge and returning nodes can have back edges.");
     }
 
     Node* node;
@@ -1344,7 +1439,7 @@ Status GraphConstructor::Convert() {
     TF_RETURN_IF_ERROR(ValidateShape(node));
 
     // Update pending_count_ for outputs.
-    UpdatePendingCountAndReady(o, node->IsNextIteration());
+    UpdatePendingCountAndReady(o, node->IsNextIteration(), node->IsCall());
   }
 
   if (processed < node_def_count()) {

@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -1541,17 +1542,24 @@ std::unique_ptr<FunctionBody> SymbolicGradientHelper::Compute() {
                                    g));
 
   // Remove the old return nodes from the function body.
-  for (Node* n : gbody->ret_nodes) {
-    g->RemoveNode(n);
-  }
-  gbody->ret_types = fbody_->arg_types;
+  // for (Node* n : gbody->ret_nodes) {
+  //   g->RemoveNode(n);
+  // }
+  // gbody->ret_types = fbody_->arg_types;
+
+  // Concatenate vectors
+  gbody->ret_types.insert(gbody->ret_types.end(), fbody_->arg_types.begin(), fbody_->arg_types.end());
+
+  printf("After adding gradients:\n", SummarizeGraphDef(g->ToGraphDefDebug()).c_str());
+
+
   // TODO(apassos): use the right dtype for gradients of  resource variables
   for (int i = 0; i < gbody->ret_types.size(); ++i) {
     if (gbody->ret_types[i] == DT_RESOURCE) {
       gbody->ret_types[i] = DT_FLOAT;
     }
   }
-  gbody->ret_nodes.clear();
+  // gbody->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.
   const int arg_types_size = static_cast<int>(fbody_->arg_types.size());

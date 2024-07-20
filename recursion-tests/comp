@@ -1,0 +1,6 @@
+#!/bin/bash
+
+cd ..
+bazel build --disk_cache=/root/mycache --per_file_copt=+tensorflow.*,-tensorflow/compiler.*,-tensorflow/lite.*,-tensorflow/core/kernels.*@-O0,-g  //tensorflow/tools/pip_package:wheel --repo_env=WHEEL_NAME=tensorflow_cpu && 
+pip uninstall tensorflow_cpu -y &&
+pip install bazel-bin/tensorflow/tools/pip_package/wheel_house/tensorflow_cpu-2.17.0-cp311-cp311-linux_x86_64.whl
